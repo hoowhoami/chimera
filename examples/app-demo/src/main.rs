@@ -1,20 +1,19 @@
-use chimera_core::prelude::*;
 use chimera_core::async_trait;
+use chimera_core::prelude::*;
 use chimera_macros::{Component, ConfigurationProperties};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-// ==================== 自定义事件定义 ====================
+// ==================== 事件定义 ====================
 
-/// 用户登录事件
 #[derive(Debug, Clone)]
-pub struct UserLoginEvent {
+pub struct UserRegisteredEvent {
     pub user_id: String,
     pub username: String,
     pub timestamp: SystemTime,
 }
 
-impl UserLoginEvent {
+impl UserRegisteredEvent {
     pub fn new(user_id: String, username: String) -> Self {
         Self {
             user_id,
@@ -24,9 +23,9 @@ impl UserLoginEvent {
     }
 }
 
-impl Event for UserLoginEvent {
+impl Event for UserRegisteredEvent {
     fn event_name(&self) -> &str {
-        "UserLoginEvent"
+        "UserRegisteredEvent"
     }
 
     fn timestamp(&self) -> SystemTime {
@@ -38,425 +37,456 @@ impl Event for UserLoginEvent {
     }
 }
 
-/// 订单创建事件
-#[derive(Debug, Clone)]
-pub struct OrderCreatedEvent {
-    pub order_id: i64,
-    pub user_id: String,
-    pub amount: f64,
-    pub timestamp: SystemTime,
-}
+// ==================== 配置 ====================
 
-impl OrderCreatedEvent {
-    pub fn new(order_id: i64, user_id: String, amount: f64) -> Self {
-        Self {
-            order_id,
-            user_id,
-            amount,
-            timestamp: SystemTime::now(),
-        }
-    }
-}
-
-impl Event for OrderCreatedEvent {
-    fn event_name(&self) -> &str {
-        "OrderCreatedEvent"
-    }
-
-    fn timestamp(&self) -> SystemTime {
-        self.timestamp
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-// ==================== 事件监听器定义 ====================
-
-/// 应用启动事件监听器
-#[derive(Component, Clone, Debug)]
-#[bean("startupListener")]
-#[event_listener]
-struct StartupEventListener {
-    #[autowired]
-    app_config: Arc<AppConfig>,
-}
-
-#[async_trait::async_trait]
-impl EventListener for StartupEventListener {
-    async fn on_event(&self, event: Arc<dyn Event>) {
-        if let Some(started_event) = event.as_any().downcast_ref::<ApplicationStartedEvent>() {
-            println!("\n📢 [StartupEventListener] Application started event received!");
-            println!("   Application: {}", started_event.app_name);
-            println!("   Startup time: {}ms", started_event.startup_time_ms);
-            println!("   App name: {}", self.app_config.name);
-        }
-    }
-
-    fn listener_name(&self) -> &str {
-        "StartupEventListener"
-    }
-
-    fn supports_event(&self, event_name: &str) -> bool {
-        event_name == "ApplicationStartedEvent"
-    }
-}
-
-/// 自定义事件监听器 - 监听所有事件
-#[derive(Component, Clone, Debug)]
-#[bean("loggingListener")]
-#[event_listener]
-struct LoggingEventListener;
-
-#[async_trait::async_trait]
-impl EventListener for LoggingEventListener {
-    async fn on_event(&self, event: Arc<dyn Event>) {
-        println!("📝 [LoggingListener] Event received: {}", event.event_name());
-    }
-
-    fn listener_name(&self) -> &str {
-        "LoggingEventListener"
-    }
-}
-
-/// 应用关闭事件监听器
-#[derive(Component, Clone, Debug)]
-#[bean("shutdownListener")]
-#[event_listener]
-struct ShutdownEventListener;
-
-#[async_trait::async_trait]
-impl EventListener for ShutdownEventListener {
-    async fn on_event(&self, event: Arc<dyn Event>) {
-        if let Some(shutdown_event) = event.as_any().downcast_ref::<ApplicationShutdownEvent>() {
-            println!("\n🛑 [ShutdownEventListener] Application shutdown event received!");
-            println!("   Application: {}", shutdown_event.app_name);
-        }
-    }
-
-    fn listener_name(&self) -> &str {
-        "ShutdownEventListener"
-    }
-
-    fn supports_event(&self, event_name: &str) -> bool {
-        event_name == "ApplicationShutdownEvent"
-    }
-}
-
-/// 类型化用户登录事件监听器 - 只监听UserLoginEvent
-#[derive(Component, Clone, Debug)]
-#[bean("userLoginListener")]
-struct UserLoginListener {
-    #[autowired]
-    app_config: Arc<AppConfig>,
-}
-
-#[async_trait::async_trait]
-impl TypedEventListener<UserLoginEvent> for UserLoginListener {
-    async fn on_event(&self, event: &UserLoginEvent) {
-        println!("\n👤 [UserLoginListener] User logged in!");
-        println!("   User ID: {}", event.user_id);
-        println!("   Username: {}", event.username);
-        println!("   App: {}", self.app_config.name);
-    }
-
-    fn listener_name(&self) -> &str {
-        "UserLoginListener"
-    }
-}
-
-/// 类型化订单创建事件监听器 - 只监听OrderCreatedEvent
-#[derive(Component, Clone, Debug)]
-#[bean("orderCreatedListener")]
-struct OrderCreatedListener;
-
-#[async_trait::async_trait]
-impl TypedEventListener<OrderCreatedEvent> for OrderCreatedListener {
-    async fn on_event(&self, event: &OrderCreatedEvent) {
-        println!("\n🛒 [OrderCreatedListener] Order created!");
-        println!("   Order ID: {}", event.order_id);
-        println!("   User ID: {}", event.user_id);
-        println!("   Amount: ${:.2}", event.amount);
-    }
-
-    fn listener_name(&self) -> &str {
-        "OrderCreatedListener"
-    }
-}
-
-// ==================== 配置定义 ====================
-
-/// 应用配置 - 使用 @ConfigurationProperties 自动绑定
 #[derive(ConfigurationProperties, Debug, Clone)]
 #[prefix("app")]
 struct AppConfig {
     name: String,
     version: String,
+    environment: String,
 }
 
-/// 数据库配置 - 使用 @ConfigurationProperties 自动绑定
 #[derive(ConfigurationProperties, Debug, Clone)]
 #[prefix("database")]
 struct DatabaseConfig {
+    url: String,
+    pool_size: i32,
+    timeout_ms: i32,
+}
+
+#[derive(ConfigurationProperties, Debug, Clone)]
+#[prefix("redis")]
+struct RedisConfig {
     host: String,
     port: i32,
-
     #[config("max-connections")]
     max_connections: i32,
 }
 
-/// 服务器配置 - 使用 @ConfigurationProperties 自动绑定
-#[derive(ConfigurationProperties, Debug, Clone)]
-#[prefix("server")]
-struct ServerConfig {
-    host: String,
-    port: i32,
-    workers: i32,
+// ==================== 服务层 ====================
+
+#[derive(Component)]
+#[bean("systemService")]
+struct SystemService {
+    #[autowired]
+    context: Arc<ApplicationContext>,
+
+    #[autowired]
+    environment: Arc<Environment>,
+
+    #[autowired]
+    event_publisher: Arc<AsyncEventPublisher>,
 }
 
-#[derive(Component, Clone, Debug)]
-#[lazy]
-struct CommonService {
-    
-}
+impl SystemService {
+    async fn demonstrate_core_components(&self) -> ApplicationResult<()> {
+        println!("🔧 System Service - Core Components Injection Demo:");
 
-impl CommonService {
-    fn print(&self) -> String {
-        String::from("CommonService init...")
+        // 使用注入的 Environment
+        println!(
+            "  Environment active profiles: {:?}",
+            self.environment.get_active_profiles()
+        );
+
+        if let Some(app_name) = self.environment.get_string("app.name") {
+            println!("  App name from injected environment: {}", app_name);
+        }
+
+        // 使用注入的 ApplicationContext
+        let bean_names = self.context.get_bean_names();
+        println!("  Total beans from injected context: {}", bean_names.len());
+
+        // 使用注入的 EventPublisher 发布事件
+        let custom_event = Arc::new(SystemHealthCheckEvent::new(
+            "All core components injected successfully".to_string(),
+        ));
+        self.event_publisher.publish_event(custom_event).await;
+        println!("  Published event using injected EventPublisher");
+
+        println!("  ✅ ALL core components (ApplicationContext, Environment, EventPublisher) successfully injected!");
+
+        Ok(())
+    }
+
+    async fn demonstrate_context_usage(&self) -> ApplicationResult<()> {
+        println!("🔍 Advanced Context Usage Demo:");
+
+        // 通过注入的 ApplicationContext 动态获取其他 bean
+        if let Ok(app_config) = self.context.get_bean_by_type::<AppConfig>().await {
+            println!(
+                "  Retrieved AppConfig via injected context: {} v{}",
+                app_config.name, app_config.version
+            );
+        }
+
+        // 检查 bean 是否存在
+        println!(
+            "  Database service exists: {}",
+            self.context.contains_bean("databaseService")
+        );
+        println!(
+            "  Cache service exists: {}",
+            self.context.contains_bean("cacheService")
+        );
+
+        Ok(())
     }
 }
 
+// 新增系统健康检查事件
+#[derive(Debug, Clone)]
+pub struct SystemHealthCheckEvent {
+    pub message: String,
+    pub timestamp: SystemTime,
+}
 
-pub type Result<T> = std::result::Result<T, ApplicationError>;
+impl SystemHealthCheckEvent {
+    pub fn new(message: String) -> Self {
+        Self {
+            message,
+            timestamp: SystemTime::now(),
+        }
+    }
+}
 
-// ==================== 业务服务 ====================
+impl Event for SystemHealthCheckEvent {
+    fn event_name(&self) -> &str {
+        "SystemHealthCheckEvent"
+    }
 
-/// 数据库服务 - 自动注入配置
+    fn timestamp(&self) -> SystemTime {
+        self.timestamp
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
 #[derive(Component, Debug, Clone)]
+#[bean("cacheService")]
+struct CacheService {
+    #[autowired]
+    redis_config: Arc<RedisConfig>,
+}
+
+impl CacheService {
+    fn set(&self, key: &str, value: &str) -> ApplicationResult<()> {
+        println!(
+            "Cache SET {}: {} (Redis: {}:{})",
+            key, value, self.redis_config.host, self.redis_config.port
+        );
+        Ok(())
+    }
+
+    fn get(&self, key: &str) -> ApplicationResult<Option<String>> {
+        println!(
+            "Cache GET {} (connections: {})",
+            key, self.redis_config.max_connections
+        );
+        Ok(Some(format!("cached_value_{}", key)))
+    }
+}
+
+#[derive(Component, Debug)]
 #[bean("databaseService")]
+#[init]
+#[destroy]
 struct DatabaseService {
     #[autowired]
     config: Arc<DatabaseConfig>,
 }
 
 impl DatabaseService {
-    fn connect(&self) -> Result<()> {
-        println!("📊 Connecting to database: {}:{}", self.config.host, self.config.port);
-        println!("   Max connections: {}", self.config.max_connections);
+    fn init(&mut self) -> ContainerResult<()> {
+        println!("Database connecting to: {}", self.config.url);
         Ok(())
     }
 
-    fn query(&self, sql: &str) -> Result<String> {
-        Ok(format!("Query result for: {}", sql))
+    fn destroy(&mut self) -> ContainerResult<()> {
+        println!(
+            "Database closing connections (pool size: {})",
+            self.config.pool_size
+        );
+        Ok(())
+    }
+
+    fn save_user(&self, user_id: &str, username: &str) -> ApplicationResult<()> {
+        println!(
+            "Database saving user: {} ({}) [timeout: {}ms]",
+            username, user_id, self.config.timeout_ms
+        );
+        Ok(())
     }
 }
 
-/// 服务器服务 - 自动注入配置和依赖
-#[derive(Component, Debug)]
-#[bean("serverService")]
-#[init]       // 使用默认的 init 方法
-#[destroy]    // 使用默认的 destroy 方法
-struct ServerService {
+#[derive(Component, Debug, Clone)]
+#[lazy]
+#[bean("userService")]
+struct UserService {
     #[autowired]
-    config: Arc<ServerConfig>,
+    database: Arc<DatabaseService>,
 
     #[autowired]
-    db: Arc<DatabaseService>,
+    cache: Arc<CacheService>,
 
     #[autowired]
     app_config: Arc<AppConfig>,
 }
 
-impl ServerService {
-    // 初始化回调（类似 Spring 的 @PostConstruct）
-    fn init(&mut self) -> ContainerResult<()> {
-        println!("🎉 ServerService initialized!");
-        println!("   Verifying configuration...");
-        println!("   Server will bind to: {}:{}", self.config.host, self.config.port);
-        println!("   Database endpoint: {}:{}", self.db.config.host, self.db.config.port);
-        println!("   ✅ Initialization complete!");
-        Ok(())
+impl UserService {
+    fn register_user(&self, username: &str) -> ApplicationResult<String> {
+        let user_id = format!("user_{}", rand::random::<u32>());
+
+        // 业务逻辑演示
+        self.database.save_user(&user_id, username)?;
+        self.cache.set(&format!("user:{}", user_id), username)?;
+
+        println!(
+            "User registered: {} in {}",
+            username, self.app_config.environment
+        );
+        Ok(user_id)
     }
 
-    // 销毁回调（类似 Spring 的 @PreDestroy）
-    fn destroy(&mut self) -> ContainerResult<()> {
-        println!("👋 ServerService shutting down...");
-        println!("   Cleaning up resources...");
-        println!("   Closing connections...");
-        println!("   ✅ Cleanup complete!");
-        Ok(())
+    fn get_user(&self, user_id: &str) -> ApplicationResult<Option<String>> {
+        // 先尝试从缓存获取
+        if let Ok(Some(cached)) = self.cache.get(&format!("user:{}", user_id)) {
+            println!("User found in cache: {}", cached);
+            return Ok(Some(cached));
+        }
+
+        println!("User not in cache, querying database...");
+        Ok(Some(format!("user_from_db_{}", user_id)))
+    }
+}
+
+// ==================== 事件监听器 ====================
+
+#[derive(Component, Clone, Debug)]
+#[event_listener]
+struct NotificationService {
+    #[autowired]
+    app_config: Arc<AppConfig>,
+}
+
+#[async_trait::async_trait]
+impl EventListener for NotificationService {
+    async fn on_event(&self, event: Arc<dyn Event>) {
+        match event.event_name() {
+            "ApplicationStartedEvent" => {
+                println!(
+                    "🎉 {} v{} started successfully",
+                    self.app_config.name, self.app_config.version
+                );
+            }
+            "UserRegisteredEvent" => {
+                if let Some(user_event) = event.as_any().downcast_ref::<UserRegisteredEvent>() {
+                    println!("📧 Welcome email sent to user: {}", user_event.username);
+                }
+            }
+            "SystemHealthCheckEvent" => {
+                if let Some(health_event) = event.as_any().downcast_ref::<SystemHealthCheckEvent>()
+                {
+                    println!("💚 System Health: {}", health_event.message);
+                }
+            }
+            "ApplicationShutdownEvent" => {
+                println!("👋 Application shutting down gracefully");
+            }
+            _ => {}
+        }
     }
 
-    fn start(&self) -> Result<()> {
-        println!("\n╔════════════════════════════════════════════════════╗");
-        println!("║  {} v{}", self.app_config.name, self.app_config.version);
-        println!("╚════════════════════════════════════════════════════╝\n");
+    fn listener_name(&self) -> &str {
+        "NotificationService"
+    }
+}
 
-        println!("🚀 Starting server...");
-        println!("   Host: {}", self.config.host);
-        println!("   Port: {}", self.config.port);
-        println!("   Workers: {}", self.config.workers);
+#[derive(Component, Clone, Debug)]
+struct AuditService;
 
-        // 连接数据库
-        self.db.connect()?;
-
-        println!("\n✅ Server is running!");
-        Ok(())
+#[async_trait::async_trait]
+impl TypedEventListener<UserRegisteredEvent> for AuditService {
+    async fn on_event(&self, event: &UserRegisteredEvent) {
+        println!(
+            "📋 Audit log: User {} ({}) registered at {:?}",
+            event.username, event.user_id, event.timestamp
+        );
     }
 
-    fn handle_request(&self, path: &str) -> Result<()> {
-        println!("\n🔧 Handling request: {}", path);
-        let result = self.db.query("SELECT * FROM users")?;
-        println!("   Response: {}", result);
-        Ok(())
+    fn listener_name(&self) -> &str {
+        "AuditService"
     }
 }
 
 // ==================== 主程序 ====================
 
+pub mod rand {
+    pub fn random<T>() -> T
+    where
+        T: From<u8>,
+    {
+        // 简单的伪随机数生成器用于演示
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let mut hasher = DefaultHasher::new();
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+            .hash(&mut hasher);
+        T::from((hasher.finish() % 256) as u8)
+    }
+}
 
 #[tokio::main]
 async fn main() -> ApplicationResult<()> {
-    println!("\n╔════════════════════════════════════════════════════╗");
-    println!("║     Chimera Framework - Complete Demo            ║");
-    println!("╚════════════════════════════════════════════════════╝\n");
+    println!("🚀 Chimera Framework - Comprehensive Demo\n");
 
-    // 查找配置文件
-    let config_paths = vec![
-        "examples/app-demo/application.toml",
-        "application.toml",
-    ];
+    // 配置查找
+    let config_file = if std::path::Path::new("examples/app-demo/application.toml").exists() {
+        "examples/app-demo/application.toml"
+    } else {
+        "application.toml"
+    };
 
-    let mut config_file = "application.toml";
-    for path in &config_paths {
-        if std::path::Path::new(path).exists() {
-            config_file = path;
-            break;
-        }
-    }
-
-    // ✅ 使用 ChimeraApplication.run() 启动应用
+    // 启动应用
     let context = ChimeraApplication::new("ChimeraDemo")
         .config_file(config_file)
-        .env_prefix("APP_")
+        .env_prefix("DEMO_")
         .shutdown_hook(|| {
-            println!("🔧 [Shutdown Hook 1] Cleaning up resources...");
+            println!("🔧 Cleaning up resources...");
             Ok(())
         })
         .shutdown_hook(|| {
-            println!("🔧 [Shutdown Hook 2] Closing connections...");
+            println!("🔧 Closing connections...");
             Ok(())
         })
-        .shutdown_hook(|| {
-            println!("🔧 [Shutdown Hook 3] Saving state...");
-            Ok(())
-        })
-        .run().await?;
+        .run()
+        .await?;
 
-    println!("✅ Application initialized with shutdown hooks\n");
-
-    // 注册类型化事件监听器（在应用启动后）
+    // 注册类型化事件监听器
     {
-        let user_login_listener = context.get_bean_by_type::<UserLoginListener>().await?;
-        let adapter = TypedEventListenerAdapter::new(user_login_listener);
+        let audit_service = context.get_bean_by_type::<AuditService>().await?;
+        let adapter = TypedEventListenerAdapter::new(audit_service);
         context.register_listener(Arc::new(adapter)).await;
-
-        let order_created_listener = context.get_bean_by_type::<OrderCreatedListener>().await?;
-        let adapter = TypedEventListenerAdapter::new(order_created_listener);
-        context.register_listener(Arc::new(adapter)).await;
-
-        println!("✅ Typed event listeners registered\n");
     }
 
-    println!("\n╔════════════════════════════════════════════════════╗");
-    println!("║              Application Started                  ║");
-    println!("╚════════════════════════════════════════════════════╝");
+    println!("✅ Application initialized\n");
 
-    // 在一个作用域中使用beans，确保在shutdown前释放所有引用
+    // 使用作用域确保引用在shutdown前释放
     {
-        // 获取并使用服务
-        let server = context.get_bean_by_type::<ServerService>().await?;
-        server.start()?;
-
-        // 模拟处理请求
-        server.handle_request("/api/users")?;
-
-        // 显示所有配置
-        println!("\n╔════════════════════════════════════════════════════╗");
-        println!("║           Configuration Summary                   ║");
-        println!("╚════════════════════════════════════════════════════╝\n");
-
+        // 演示配置注入
         let app_config = context.get_bean_by_type::<AppConfig>().await?;
         let db_config = context.get_bean_by_type::<DatabaseConfig>().await?;
-        let server_config = context.get_bean_by_type::<ServerConfig>().await?;
+        let redis_config = context.get_bean_by_type::<RedisConfig>().await?;
 
-        println!("📦 Application:");
-        println!("   Name: {}", app_config.name);
-        println!("   Version: {}", app_config.version);
+        println!("📋 Configuration Summary:");
+        println!(
+            "  App: {} v{} ({})",
+            app_config.name, app_config.version, app_config.environment
+        );
+        println!(
+            "  Database: {} (pool: {})",
+            db_config.url, db_config.pool_size
+        );
+        println!(
+            "  Redis: {}:{} (max: {})\n",
+            redis_config.host, redis_config.port, redis_config.max_connections
+        );
 
-        println!("\n🗄️  Database:");
-        println!("   Host: {}", db_config.host);
-        println!("   Port: {}", db_config.port);
-        println!("   Max Connections: {}", db_config.max_connections);
+        // 演示核心组件注入
+        println!("🧩 Core Components Injection Demo:");
+        let system_service = context.get_bean_by_type::<SystemService>().await?;
+        system_service.demonstrate_core_components().await?;
+        system_service.demonstrate_context_usage().await?;
+        println!();
 
-        println!("\n🖥️  Server:");
-        println!("   Host: {}", server_config.host);
-        println!("   Port: {}", server_config.port);
-        println!("   Workers: {}", server_config.workers);
+        // 演示业务逻辑
+        println!("🔄 Business Logic Demo:");
+        let user_service = context.get_bean_by_type::<UserService>().await?;
 
-        let common_service = context.get_bean_by_type::<CommonService>().await?;
-        println!("\nCommonService print: {}", common_service.print());
-    } // 所有bean引用在这里被释放
+        // 注册用户（触发事件）
+        let user_id = user_service.register_user("alice")?;
 
-    // ==================== 演示事件系统 ====================
-    println!("\n╔════════════════════════════════════════════════════╗");
-    println!("║              Event System Demo                    ║");
-    println!("╚════════════════════════════════════════════════════╝\n");
+        // 发布用户注册事件
+        let event = Arc::new(UserRegisteredEvent::new(
+            user_id.clone(),
+            "alice".to_string(),
+        ));
+        context.publish_event(event).await;
 
-    // 发布自定义事件
-    println!("📤 Publishing custom events...\n");
+        // 查询用户
+        user_service.get_user(&user_id)?;
 
-    // 发布类型化事件（新方式 - 类型安全）
-    let user_login_event = Arc::new(UserLoginEvent::new(
-        "user_123".to_string(),
-        "john_doe".to_string(),
-    ));
-    context.publish_event(user_login_event).await;
+        // 等待异步事件处理完成
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
 
-    let order_created_event = Arc::new(OrderCreatedEvent::new(
-        12345,
-        "user_123".to_string(),
-        299.99,
-    ));
-    context.publish_event(order_created_event).await;
+        println!();
+    } // 释放所有bean引用
 
-    println!();
+    // 测试核心组件是否可以按类型注入
+    println!("\n🔍 Testing Core Component Type Injection:");
 
-    println!("\n╔════════════════════════════════════════════════════╗");
-    println!("║                Key Features                       ║");
-    println!("╚════════════════════════════════════════════════════╝\n");
-
-    println!("✅ @ConfigurationProperties - 自动批量绑定配置");
-    println!("✅ @Component - 自动组件扫描和注册");
-    println!("✅ @autowired - 自动依赖注入");
-    println!("✅ 类型安全的配置管理");
-    println!("✅ 环境变量覆盖 (APP_* 前缀)");
-    println!("✅ Spring Boot 风格的开发体验");
-    println!("✅ 异步初始化 + 并发bean创建");
-    println!("✅ Event/Publisher/Listener - 事件驱动架构");
-    println!("✅ 优雅停机 - Shutdown Hooks + Signal Handling");
-
-    println!("\n💡 Try these commands:");
-    println!("   RUST_LOG=debug cargo run -p app-demo");
-    println!("   APP_PROFILES_ACTIVE=dev cargo run -p app-demo");
-    println!("\n💡 Graceful shutdown:");
-    println!("   Framework automatically handles Ctrl+C for graceful shutdown");
-    println!("   All shutdown hooks and destroy callbacks will be executed");
-
-    loop {
-        
+    // 测试 ApplicationContext
+    match context.get_bean_by_type::<ApplicationContext>().await {
+        Ok(_) => println!("✅ ApplicationContext: Successfully injected by type"),
+        Err(e) => println!("❌ ApplicationContext: Failed to inject by type - {}", e),
     }
+
+    // 测试 Environment
+    match context.get_bean_by_type::<Environment>().await {
+        Ok(_) => println!("✅ Environment: Successfully injected by type"),
+        Err(e) => println!("❌ Environment: Failed to inject by type - {}", e),
+    }
+
+    // 测试 AsyncEventPublisher
+    match context.get_bean_by_type::<AsyncEventPublisher>().await {
+        Ok(_) => println!("✅ AsyncEventPublisher: Successfully injected by type"),
+        Err(e) => println!("❌ AsyncEventPublisher: Failed to inject by type - {}", e),
+    }
+
+    // 测试 Arc 包装的类型
+    println!("\n🔍 Testing Arc<T> Types:");
+
+    match context.get_bean_by_type::<Arc<ApplicationContext>>().await {
+        Ok(_) => println!("✅ Arc<ApplicationContext>: Successfully injected by type"),
+        Err(e) => println!(
+            "❌ Arc<ApplicationContext>: Failed to inject by type - {}",
+            e
+        ),
+    }
+
+    match context.get_bean_by_type::<Arc<Environment>>().await {
+        Ok(_) => println!("✅ Arc<Environment>: Successfully injected by type"),
+        Err(e) => println!("❌ Arc<Environment>: Failed to inject by type - {}", e),
+    }
+
+    match context.get_bean_by_type::<Arc<AsyncEventPublisher>>().await {
+        Ok(_) => println!("✅ Arc<AsyncEventPublisher>: Successfully injected by type"),
+        Err(e) => println!(
+            "❌ Arc<AsyncEventPublisher>: Failed to inject by type - {}",
+            e
+        ),
+    }
+
+    context.shutdown().await?;
+
+    println!("✅ Demo completed successfully");
+    println!("💡 Framework features demonstrated:");
+    println!("  • @ConfigurationProperties - Type-safe configuration");
+    println!("  • @Component & @autowired - Dependency injection");
+    println!("  • @autowired(\"beanName\") - Named bean injection");
+    println!("  • @init & @destroy - Lifecycle management");
+    println!("  • @lazy - Lazy initialization");
+    println!("  • Event system - Typed & untyped listeners");
+    println!("  • Core components injection - ApplicationContext, Environment, EventPublisher via @autowired");
+    println!("  • Dynamic bean retrieval - Get beans by name and type at runtime");
+    println!("  • Shutdown hooks - Graceful shutdown");
 
     Ok(())
 }
