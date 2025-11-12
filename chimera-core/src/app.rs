@@ -2,6 +2,7 @@ use crate::{ApplicationContext, ApplicationResult};
 use crate::config::{TomlPropertySource, EnvironmentPropertySource};
 use crate::event::ApplicationStartedEvent;
 use crate::logging::LoggingConfig;
+use crate::error::ContainerResult;
 use std::sync::Arc;
 use std::path::Path;
 
@@ -29,6 +30,9 @@ pub struct ChimeraApplication {
 
     /// 自定义初始化函数
     initializers: Vec<Box<dyn Fn(&Arc<ApplicationContext>) -> ApplicationResult<()> + Send + Sync>>,
+
+    /// 自定义 shutdown hooks
+    shutdown_hooks: Vec<Box<dyn Fn() -> ContainerResult<()> + Send + Sync>>,
 }
 
 impl ChimeraApplication {
@@ -42,6 +46,7 @@ impl ChimeraApplication {
             show_banner: true,
             logging_config: None,
             initializers: Vec::new(),
+            shutdown_hooks: Vec::new(),
         }
     }
 
@@ -89,6 +94,17 @@ impl ChimeraApplication {
         F: Fn(&Arc<ApplicationContext>) -> ApplicationResult<()> + Send + Sync + 'static,
     {
         self.initializers.push(Box::new(f));
+        self
+    }
+
+    /// 添加 shutdown hook
+    ///
+    /// Shutdown hook 会在应用关闭时按注册顺序执行
+    pub fn shutdown_hook<F>(mut self, hook: F) -> Self
+    where
+        F: Fn() -> ContainerResult<()> + Send + Sync + 'static,
+    {
+        self.shutdown_hooks.push(Box::new(hook));
         self
     }
 
@@ -146,6 +162,9 @@ impl ChimeraApplication {
         let context = builder.build().await?;
         tracing::info!("ApplicationContext creating");
 
+        // 设置应用名称（用于事件）
+        context.set_app_name(self.name.clone()).await;
+
         // 执行自定义初始化器（在扫描组件之前）
         for initializer in &self.initializers {
             initializer(&context)?;
@@ -184,6 +203,30 @@ impl ChimeraApplication {
             elapsed_ms,
         ));
         context.publish_event(event).await;
+
+        // 注册在 ChimeraApplication 中配置的 shutdown hooks
+        for hook in self.shutdown_hooks {
+            context.register_shutdown_hook(hook).await;
+        }
+
+        // 设置优雅停机信号处理（Ctrl+C）
+        let context_for_signal = Arc::clone(&context);
+        tokio::spawn(async move {
+            match tokio::signal::ctrl_c().await {
+                Ok(()) => {
+                    tracing::info!("Received shutdown signal (Ctrl+C), initiating graceful shutdown");
+                    if let Err(e) = context_for_signal.shutdown().await {
+                        tracing::error!("Error during shutdown: {}", e);
+                        std::process::exit(1);
+                    }
+                    std::process::exit(0);
+                }
+                Err(err) => {
+                    tracing::error!("Unable to listen for shutdown signal: {}", err);
+                }
+            }
+        });
+        tracing::info!("Graceful shutdown hook registered (Ctrl+C to shutdown)");
 
         Ok(context)
     }

@@ -8,9 +8,12 @@ use crate::{
     error::{ContainerError, ContainerResult},
     utils::dependency::CreationTracker,
     config::Environment,
-    event::{EventPublisher, SimpleEventPublisher, Event, EventListener},
+    event::{EventPublisher, SimpleEventPublisher, Event, EventListener, ApplicationShutdownEvent},
     Scope,
 };
+
+/// Shutdown hook类型
+pub type ShutdownHook = Box<dyn Fn() -> ContainerResult<()> + Send + Sync>;
 
 /// 容器 trait - 定义依赖注入容器的核心接口
 #[async_trait::async_trait]
@@ -53,6 +56,12 @@ pub struct ApplicationContext {
 
     /// 事件发布器
     event_publisher: Arc<dyn EventPublisher>,
+
+    /// Shutdown hooks
+    shutdown_hooks: RwLock<Vec<ShutdownHook>>,
+
+    /// 应用名称（用于事件）
+    app_name: RwLock<Option<String>>,
 }
 
 impl ApplicationContext {
@@ -65,7 +74,20 @@ impl ApplicationContext {
             creation_tracker: CreationTracker::new(),
             environment: Arc::new(Environment::new()),
             event_publisher: Arc::new(SimpleEventPublisher::new()),
+            shutdown_hooks: RwLock::new(Vec::new()),
+            app_name: RwLock::new(None),
         }
+    }
+
+    /// 设置应用名称
+    pub async fn set_app_name(&self, name: String) {
+        let mut app_name = self.app_name.write().await;
+        *app_name = Some(name);
+    }
+
+    /// 获取应用名称
+    pub async fn get_app_name(&self) -> Option<String> {
+        self.app_name.read().await.clone()
     }
 
     /// 获取 Environment
@@ -96,6 +118,18 @@ impl ApplicationContext {
     /// 注册事件监听器
     pub async fn register_listener(&self, listener: Arc<dyn EventListener>) {
         self.event_publisher.register_listener(listener).await;
+    }
+
+    /// 注册 shutdown hook
+    ///
+    /// Shutdown hook 会在应用关闭时按注册顺序执行
+    pub async fn register_shutdown_hook<F>(&self, hook: F)
+    where
+        F: Fn() -> ContainerResult<()> + Send + Sync + 'static,
+    {
+        let mut hooks = self.shutdown_hooks.write().await;
+        hooks.push(Box::new(hook));
+        tracing::debug!("Registered shutdown hook, total: {}", hooks.len());
     }
 
     /// 构建器模式创建上下文
@@ -301,6 +335,27 @@ impl ApplicationContext {
     /// 销毁所有单例 Bean（调用 destroy 回调）
     /// 注意：只有当 Arc 的引用计数为 1 时才能调用 destroy
     pub async fn shutdown(&self) -> ContainerResult<()> {
+        tracing::info!("Starting application shutdown");
+
+        // 1. 发布 ApplicationShutdownEvent
+        let app_name = self.get_app_name().await.unwrap_or_else(|| "Application".to_string());
+        let shutdown_event = Arc::new(ApplicationShutdownEvent::new(app_name));
+        self.publish_event(shutdown_event).await;
+
+        // 2. 执行所有 shutdown hooks
+        let hooks = self.shutdown_hooks.read().await;
+        tracing::info!("Executing {} shutdown hook(s)", hooks.len());
+        for (idx, hook) in hooks.iter().enumerate() {
+            match hook() {
+                Ok(_) => tracing::debug!("Shutdown hook {} executed successfully", idx + 1),
+                Err(e) => tracing::warn!("Shutdown hook {} failed: {}", idx + 1, e),
+            }
+        }
+        drop(hooks); // 释放读锁
+
+        // 3. 销毁所有 beans
+        tracing::info!("Destroying beans");
+
         // 获取所有定义的克隆，避免长时间持锁
         let definitions_map: std::collections::HashMap<String, bool> = {
             let definitions = self.definitions.read().await;
@@ -344,6 +399,7 @@ impl ApplicationContext {
             }
         }
 
+        tracing::info!("Application shutdown complete");
         Ok(())
     }
 }

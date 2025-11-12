@@ -120,6 +120,30 @@ impl EventListener for LoggingEventListener {
     }
 }
 
+/// 应用关闭事件监听器
+#[derive(Component, Clone, Debug)]
+#[bean("shutdownListener")]
+#[event_listener]
+struct ShutdownEventListener;
+
+#[async_trait::async_trait]
+impl EventListener for ShutdownEventListener {
+    async fn on_event(&self, event: Arc<dyn Event>) {
+        if let Some(shutdown_event) = event.as_any().downcast_ref::<ApplicationShutdownEvent>() {
+            println!("\n🛑 [ShutdownEventListener] Application shutdown event received!");
+            println!("   Application: {}", shutdown_event.app_name);
+        }
+    }
+
+    fn listener_name(&self) -> &str {
+        "ShutdownEventListener"
+    }
+
+    fn supports_event(&self, event_name: &str) -> bool {
+        event_name == "ApplicationShutdownEvent"
+    }
+}
+
 /// 类型化用户登录事件监听器 - 只监听UserLoginEvent
 #[derive(Component, Clone, Debug)]
 #[bean("userLoginListener")]
@@ -313,17 +337,24 @@ async fn main() -> ApplicationResult<()> {
     }
 
     // ✅ 使用 ChimeraApplication.run() 启动应用
-    // 自动完成：
-    //   1. 加载配置文件 (application.toml)
-    //   2. 扫描并绑定 @ConfigurationProperties
-    //   3. 扫描并注册 @Component
-    //   4. 自动依赖注入
-    //   5. 并发初始化所有 bean
-    //   6. 自动扫描并注册EventListener
     let context = ChimeraApplication::new("ChimeraDemo")
         .config_file(config_file)
         .env_prefix("APP_")
+        .shutdown_hook(|| {
+            println!("🔧 [Shutdown Hook 1] Cleaning up resources...");
+            Ok(())
+        })
+        .shutdown_hook(|| {
+            println!("🔧 [Shutdown Hook 2] Closing connections...");
+            Ok(())
+        })
+        .shutdown_hook(|| {
+            println!("🔧 [Shutdown Hook 3] Saving state...");
+            Ok(())
+        })
         .run().await?;
+
+    println!("✅ Application initialized with shutdown hooks\n");
 
     // 注册类型化事件监听器（在应用启动后）
     {
@@ -414,21 +445,18 @@ async fn main() -> ApplicationResult<()> {
     println!("✅ Spring Boot 风格的开发体验");
     println!("✅ 异步初始化 + 并发bean创建");
     println!("✅ Event/Publisher/Listener - 事件驱动架构");
+    println!("✅ 优雅停机 - Shutdown Hooks + Signal Handling");
 
     println!("\n💡 Try these commands:");
     println!("   APP_SERVER_PORT=9000 cargo run -p app-demo");
     println!("   APP_DATABASE_HOST=prod-db cargo run -p app-demo");
+    println!("\n💡 Graceful shutdown:");
+    println!("   Framework automatically handles Ctrl+C for graceful shutdown");
+    println!("   All shutdown hooks and @PreDestroy callbacks will be executed");
 
-    println!();
+    loop {
 
-    // 演示生命周期回调：shutdown 时会调用 @PreDestroy
-    println!("\n╔════════════════════════════════════════════════════╗");
-    println!("║           Shutting Down Application              ║");
-    println!("╚════════════════════════════════════════════════════╝\n");
-
-    context.shutdown().await?;
-
-    println!("\n✅ Application shutdown complete!");
+    }
 
     Ok(())
 }
