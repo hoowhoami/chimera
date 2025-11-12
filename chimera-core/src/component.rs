@@ -1,4 +1,5 @@
 use crate::{ApplicationContext, ContainerResult, Scope, Container};
+use crate::event::EventListener;
 use std::sync::Arc;
 use std::future::Future;
 use std::pin::Pin;
@@ -24,6 +25,17 @@ pub struct ConfigurationPropertiesRegistry {
 }
 
 inventory::collect!(ConfigurationPropertiesRegistry);
+
+/// EventListener注册函数类型
+pub type EventListenerRegistrar = fn(&Arc<ApplicationContext>) -> Pin<Box<dyn Future<Output = ContainerResult<Arc<dyn EventListener>>> + Send + 'static>>;
+
+/// EventListener注册表 - 用于inventory收集
+pub struct EventListenerRegistry {
+    pub registrar: EventListenerRegistrar,
+    pub name: &'static str,
+}
+
+inventory::collect!(EventListenerRegistry);
 
 /// Component trait - 用于标记可以自动注册到容器的组件
 ///
@@ -75,6 +87,18 @@ pub trait Component: Sized + Send + Sync + 'static {
     ///
     /// 返回 None 表示没有清理逻辑
     fn destroy_callback() -> Option<fn(&mut Self) -> ContainerResult<()>> {
+        None
+    }
+
+    /// 是否实现了EventListener
+    ///
+    /// 如果返回true，会在Bean创建后自动注册为EventListener
+    fn is_event_listener() -> bool {
+        false
+    }
+
+    /// 转换为EventListener（如果实现了EventListener trait）
+    fn as_event_listener(self: Arc<Self>) -> Option<Arc<dyn EventListener>> {
         None
     }
 
@@ -199,6 +223,42 @@ impl ApplicationContext {
         }
 
         tracing::info!("Configuration properties scan completed successfully, bound {} bean(s)", total);
+        Ok(())
+    }
+
+    /// 自动扫描并注册EventListener
+    ///
+    /// 在Bean初始化后调用，自动注册所有实现了EventListener的Component
+    pub async fn scan_event_listeners(self: &Arc<Self>) -> ContainerResult<()> {
+        tracing::info!("Starting event listener scan for @Component beans implementing EventListener");
+
+        let listeners: Vec<_> = inventory::iter::<EventListenerRegistry>().collect();
+        let total = listeners.len();
+
+        if total == 0 {
+            tracing::debug!("No EventListener implementations found");
+            return Ok(());
+        }
+
+        tracing::info!("Found {} EventListener implementation(s) to register", total);
+
+        for (idx, listener_reg) in listeners.iter().enumerate() {
+            tracing::debug!(
+                "Registering event listener [{}/{}]: '{}'",
+                idx + 1,
+                total,
+                listener_reg.name
+            );
+
+            let listener = (listener_reg.registrar)(self).await.map_err(|e| {
+                tracing::error!("Failed to create event listener '{}': {}", listener_reg.name, e);
+                e
+            })?;
+
+            self.register_listener(listener).await;
+        }
+
+        tracing::info!("Event listener scan completed, registered {} listener(s)", total);
         Ok(())
     }
 }

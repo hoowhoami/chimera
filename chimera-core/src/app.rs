@@ -1,5 +1,6 @@
 use crate::{ApplicationContext, ApplicationResult};
 use crate::config::{TomlPropertySource, EnvironmentPropertySource};
+use crate::event::ApplicationStartedEvent;
 use crate::logging::LoggingConfig;
 use std::sync::Arc;
 use std::path::Path;
@@ -158,6 +159,10 @@ impl ChimeraApplication {
         tracing::info!("Scanning for @Component annotated beans");
         context.scan_components().await?;
 
+        // 自动扫描并注册EventListener
+        tracing::info!("Scanning for EventListener implementations");
+        context.scan_event_listeners().await?;
+
         // 验证依赖
         tracing::info!("Validating bean dependencies");
         context.validate_dependencies().await?;
@@ -172,6 +177,13 @@ impl ChimeraApplication {
         let elapsed_ms = elapsed.as_millis();
 
         tracing::info!("Started {} in {}ms", self.name, elapsed_ms);
+
+        // 发布 ApplicationStartedEvent
+        let event = Arc::new(ApplicationStartedEvent::new(
+            self.name.clone(),
+            elapsed_ms,
+        ));
+        context.publish_event(event).await;
 
         Ok(context)
     }

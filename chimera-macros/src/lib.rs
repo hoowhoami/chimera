@@ -18,8 +18,9 @@ use proc_macro::TokenStream;
 /// #[init("custom_init")]  // 可选：自定义初始化方法名
 /// #[destroy]              // 可选：销毁回调（默认调用 pre_destroy 方法）
 /// #[destroy("cleanup")]   // 可选：自定义销毁方法名
+/// #[event_listener]       // 可选：自动注册为EventListener
 /// ```
-#[proc_macro_derive(Component, attributes(bean, scope, lazy, autowired, value, init, destroy))]
+#[proc_macro_derive(Component, attributes(bean, scope, lazy, autowired, value, init, destroy, event_listener))]
 pub fn derive_component(input: TokenStream) -> TokenStream {
     component_impl::derive_component_impl(input)
 }

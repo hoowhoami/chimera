@@ -1,6 +1,55 @@
 use chimera_core::prelude::*;
+use chimera_core::async_trait;
 use chimera_macros::{Component, ConfigurationProperties};
 use std::sync::Arc;
+
+// ==================== 事件监听器定义 ====================
+
+/// 应用启动事件监听器
+#[derive(Component, Clone, Debug)]
+#[bean("startupListener")]
+#[event_listener]
+struct StartupEventListener {
+    #[autowired]
+    app_config: Arc<AppConfig>,
+}
+
+#[async_trait::async_trait]
+impl EventListener for StartupEventListener {
+    async fn on_event(&self, event: Arc<dyn Event>) {
+        if let Some(started_event) = event.as_any().downcast_ref::<ApplicationStartedEvent>() {
+            println!("\n📢 [StartupEventListener] Application started event received!");
+            println!("   Application: {}", started_event.app_name);
+            println!("   Startup time: {}ms", started_event.startup_time_ms);
+            println!("   App name: {}", self.app_config.name);
+        }
+    }
+
+    fn listener_name(&self) -> &str {
+        "StartupEventListener"
+    }
+
+    fn supports_event(&self, event_name: &str) -> bool {
+        event_name == "ApplicationStartedEvent"
+    }
+}
+
+/// 自定义事件监听器 - 监听所有事件
+#[derive(Component, Clone, Debug)]
+#[bean("loggingListener")]
+#[event_listener]
+struct LoggingEventListener;
+
+#[async_trait::async_trait]
+impl EventListener for LoggingEventListener {
+    async fn on_event(&self, event: Arc<dyn Event>) {
+        println!("📝 [LoggingListener] Event received: {}", event.event_name());
+    }
+
+    fn listener_name(&self) -> &str {
+        "LoggingEventListener"
+    }
+}
 
 // ==================== 配置定义 ====================
 
@@ -160,6 +209,7 @@ async fn main() -> ApplicationResult<()> {
     //   3. 扫描并注册 @Component
     //   4. 自动依赖注入
     //   5. 并发初始化所有 bean
+    //   6. 自动扫描并注册EventListener
     let context = ChimeraApplication::new("ChimeraDemo")
         .config_file(config_file)
         .env_prefix("APP_")
@@ -205,6 +255,28 @@ async fn main() -> ApplicationResult<()> {
         println!("\nCommonService print: {}", common_service.print());
     } // 所有bean引用在这里被释放
 
+    // ==================== 演示事件系统 ====================
+    println!("\n╔════════════════════════════════════════════════════╗");
+    println!("║              Event System Demo                    ║");
+    println!("╚════════════════════════════════════════════════════╝\n");
+
+    // 发布自定义事件
+    println!("📤 Publishing custom events...\n");
+
+    let custom_event1 = Arc::new(CustomEvent::new(
+        "UserLoginEvent".to_string(),
+        Arc::new("user123".to_string()),
+    ));
+    context.publish_event(custom_event1).await;
+
+    let custom_event2 = Arc::new(CustomEvent::new(
+        "OrderCreatedEvent".to_string(),
+        Arc::new(12345_i32),
+    ));
+    context.publish_event(custom_event2).await;
+
+    println!();
+
     println!("\n╔════════════════════════════════════════════════════╗");
     println!("║                Key Features                       ║");
     println!("╚════════════════════════════════════════════════════╝\n");
@@ -216,6 +288,7 @@ async fn main() -> ApplicationResult<()> {
     println!("✅ 环境变量覆盖 (APP_* 前缀)");
     println!("✅ Spring Boot 风格的开发体验");
     println!("✅ 异步初始化 + 并发bean创建");
+    println!("✅ Event/Publisher/Listener - 事件驱动架构");
 
     println!("\n💡 Try these commands:");
     println!("   APP_SERVER_PORT=9000 cargo run -p app-demo");

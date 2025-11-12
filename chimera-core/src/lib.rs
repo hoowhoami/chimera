@@ -16,6 +16,7 @@ pub mod utils;
 pub mod config;
 pub mod app;
 pub mod logging;
+pub mod event;
 
 // 重新导出常用类型
 pub use container::{Container, ApplicationContext};
@@ -24,12 +25,19 @@ pub use scope::Scope;
 pub use bean::{Bean, BeanDefinition, BeanFactory};
 pub use lifecycle::Lifecycle;
 pub use component::Component;
+pub use component::{ComponentRegistry, ConfigurationPropertiesRegistry, EventListenerRegistry};
 pub use config::{
     Environment, PropertySource, ConfigValue,
     EnvironmentPropertySource, TomlPropertySource, MapPropertySource,
 };
 pub use app::ChimeraApplication;
 pub use logging::{LoggingConfig, LogLevel, LogFormat};
+pub use event::{
+    Event, EventListener, TypedEventListener, EventPublisher,
+    SimpleEventPublisher, AsyncEventPublisher,
+    ApplicationStartedEvent, ApplicationShutdownEvent,
+    CustomEvent,
+};
 
 // 导出 async_trait，供宏使用
 pub use async_trait;
@@ -49,5 +57,11 @@ pub mod prelude {
     };
     pub use crate::app::ChimeraApplication;
     pub use crate::logging::{LoggingConfig, LogLevel, LogFormat};
+    pub use crate::event::{
+        Event, EventListener, TypedEventListener, EventPublisher,
+        SimpleEventPublisher, AsyncEventPublisher,
+        ApplicationStartedEvent, ApplicationShutdownEvent,
+        CustomEvent,
+    };
     pub use crate::utils;
 }

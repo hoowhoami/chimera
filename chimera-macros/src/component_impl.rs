@@ -27,6 +27,11 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
     let init_method = get_init_method(&input.attrs);
     let destroy_method = get_destroy_method(&input.attrs);
 
+    // 检查是否有 #[event_listener] 属性
+    let is_event_listener = input.attrs.iter().any(|attr| {
+        attr.path().is_ident("event_listener")
+    });
+
     // 获取所有字段
     let all_fields = if let Data::Struct(data_struct) = &input.data {
         if let Fields::Named(fields) = &data_struct.fields {
@@ -209,6 +214,26 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
     };
 
     // 生成Component trait实现和自动注册代码（异步）
+    let event_listener_registration = if is_event_listener {
+        quote! {
+            // 自动向inventory注册EventListener
+            inventory::submit! {
+                chimera_core::EventListenerRegistry {
+                    registrar: |ctx: &std::sync::Arc<chimera_core::ApplicationContext>| {
+                        let ctx = std::sync::Arc::clone(ctx);
+                        Box::pin(async move {
+                            let listener = ctx.get_bean_by_type::<#name>().await?;
+                            Ok(listener as std::sync::Arc<dyn chimera_core::EventListener>)
+                        })
+                    },
+                    name: #bean_name,
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let expanded = quote! {
         #[::chimera_core::async_trait::async_trait]
         impl chimera_core::Component for #name {
@@ -244,7 +269,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
             }
         }
 
-        // 自动向inventory注册
+        // 自动向inventory注册Component
         inventory::submit! {
             chimera_core::component::ComponentRegistry {
                 registrar: |ctx: &std::sync::Arc<chimera_core::ApplicationContext>| {
@@ -256,6 +281,9 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                 name: #bean_name,
             }
         }
+
+        // 条件性注册EventListener
+        #event_listener_registration
     };
 
     TokenStream::from(expanded)

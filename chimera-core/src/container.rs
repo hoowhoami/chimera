@@ -8,6 +8,7 @@ use crate::{
     error::{ContainerError, ContainerResult},
     utils::dependency::CreationTracker,
     config::Environment,
+    event::{EventPublisher, SimpleEventPublisher, Event, EventListener},
     Scope,
 };
 
@@ -49,6 +50,9 @@ pub struct ApplicationContext {
 
     /// 配置环境
     environment: Arc<Environment>,
+
+    /// 事件发布器
+    event_publisher: Arc<dyn EventPublisher>,
 }
 
 impl ApplicationContext {
@@ -60,6 +64,7 @@ impl ApplicationContext {
             type_to_name: RwLock::new(HashMap::new()),
             creation_tracker: CreationTracker::new(),
             environment: Arc::new(Environment::new()),
+            event_publisher: Arc::new(SimpleEventPublisher::new()),
         }
     }
 
@@ -71,6 +76,26 @@ impl ApplicationContext {
     /// 获取 Environment（别名，方便使用）
     pub fn get_environment(&self) -> &Arc<Environment> {
         &self.environment
+    }
+
+    /// 获取 EventPublisher
+    pub fn event_publisher(&self) -> &Arc<dyn EventPublisher> {
+        &self.event_publisher
+    }
+
+    /// 获取 EventPublisher（别名，方便使用）
+    pub fn get_event_publisher(&self) -> &Arc<dyn EventPublisher> {
+        &self.event_publisher
+    }
+
+    /// 发布事件
+    pub async fn publish_event(&self, event: Arc<dyn Event>) {
+        self.event_publisher.publish_event(event).await;
+    }
+
+    /// 注册事件监听器
+    pub async fn register_listener(&self, listener: Arc<dyn EventListener>) {
+        self.event_publisher.register_listener(listener).await;
     }
 
     /// 构建器模式创建上下文
