@@ -448,14 +448,14 @@ async fn main() -> ApplicationResult<()> {
     println!("✅ 优雅停机 - Shutdown Hooks + Signal Handling");
 
     println!("\n💡 Try these commands:");
-    println!("   APP_SERVER_PORT=9000 cargo run -p app-demo");
-    println!("   APP_DATABASE_HOST=prod-db cargo run -p app-demo");
+    println!("   RUST_LOG=debug cargo run -p app-demo");
+    println!("   APP_PROFILES_ACTIVE=dev cargo run -p app-demo");
     println!("\n💡 Graceful shutdown:");
     println!("   Framework automatically handles Ctrl+C for graceful shutdown");
-    println!("   All shutdown hooks and @PreDestroy callbacks will be executed");
+    println!("   All shutdown hooks and destroy callbacks will be executed");
 
     loop {
-
+        
     }
 
     Ok(())
