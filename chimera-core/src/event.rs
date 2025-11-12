@@ -1,8 +1,8 @@
 use std::any::Any;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
 
 /// 事件 trait - 所有事件都必须实现此 trait
 ///
@@ -147,7 +147,9 @@ impl<E: Event + 'static, L: TypedEventListener<E>> TypedEventListenerAdapter<E, 
 }
 
 #[async_trait::async_trait]
-impl<E: Event + 'static, L: TypedEventListener<E> + 'static> EventListener for TypedEventListenerAdapter<E, L> {
+impl<E: Event + 'static, L: TypedEventListener<E> + 'static> EventListener
+    for TypedEventListenerAdapter<E, L>
+{
     async fn on_event(&self, event: Arc<dyn Event>) {
         // 尝试将事件转换为具体类型
         if let Some(typed_event) = event.as_any().downcast_ref::<E>() {
@@ -164,7 +166,10 @@ impl<E: Event + 'static, L: TypedEventListener<E> + 'static> EventListener for T
         // 这里我们通过类型名称来判断
         let event_type_name = std::any::type_name::<E>();
         // 提取类型名称的最后一部分（去掉路径）
-        let short_name = event_type_name.split("::").last().unwrap_or(event_type_name);
+        let short_name = event_type_name
+            .split("::")
+            .last()
+            .unwrap_or(event_type_name);
         event_name == short_name
     }
 }
@@ -173,7 +178,7 @@ impl<E: Event + 'static, L: TypedEventListener<E> + 'static> EventListener for T
 ///
 /// 类似 Spring 的 ApplicationEventPublisher
 #[async_trait::async_trait]
-pub trait EventPublisher: Send + Sync {
+pub trait EventPublisher: Any + Send + Sync {
     /// 发布事件
     async fn publish_event(&self, event: Arc<dyn Event>);
 
@@ -187,18 +192,30 @@ pub trait EventPublisher: Send + Sync {
     async fn listener_count(&self) -> usize;
 }
 
-/// 简单事件发布器实现
+/// AsyncEventPublisher 实现 CoreComponent
+impl crate::container::CoreComponent for AsyncEventPublisher {
+    fn core_bean_name() -> &'static str {
+        crate::constants::EVENT_PUBLISHER_BEAN_NAME
+    }
+
+    fn get_from_context(
+        context: &std::sync::Arc<crate::container::ApplicationContext>,
+    ) -> std::sync::Arc<Self> {
+        std::sync::Arc::clone(context.event_publisher())
+    }
+}
+
+/// 异步事件发布器
 ///
-/// 默认的事件发布器，支持同步事件分发
-pub struct SimpleEventPublisher {
+/// 支持异步事件分发，不阻塞事件发布者
+pub struct AsyncEventPublisher {
     /// 事件监听器列表
     listeners: RwLock<Vec<Arc<dyn EventListener>>>,
     /// 监听器名称到索引的映射
     listener_names: RwLock<HashMap<String, usize>>,
 }
 
-impl SimpleEventPublisher {
-    /// 创建新的事件发布器
+impl AsyncEventPublisher {
     pub fn new() -> Self {
         Self {
             listeners: RwLock::new(Vec::new()),
@@ -207,35 +224,43 @@ impl SimpleEventPublisher {
     }
 }
 
-impl Default for SimpleEventPublisher {
+impl Default for AsyncEventPublisher {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait::async_trait]
-impl EventPublisher for SimpleEventPublisher {
-    /// 发布事件到所有监听器
+impl EventPublisher for AsyncEventPublisher {
+    /// 异步发布事件（不等待监听器处理完成）
     async fn publish_event(&self, event: Arc<dyn Event>) {
         let listeners = self.listeners.read().await;
         let event_name = event.event_name();
 
         tracing::debug!(
-            "Publishing event: {} to {} listener(s)",
+            "Publishing event asynchronously: {} to {} listener(s)",
             event_name,
             listeners.len()
         );
 
-        // 遍历所有监听器并分发事件
-        for listener in listeners.iter() {
-            if listener.supports_event(event_name) {
-                let event_clone = Arc::clone(&event);
+        // 克隆监听器列表，避免长时间持锁
+        let listeners_clone: Vec<_> = listeners
+            .iter()
+            .filter(|l| l.supports_event(event_name))
+            .map(Arc::clone)
+            .collect();
+
+        drop(listeners);
+
+        // 异步分发事件到所有监听器
+        for listener in listeners_clone {
+            let event_clone = Arc::clone(&event);
+            tokio::spawn(async move {
                 listener.on_event(event_clone).await;
-            }
+            });
         }
     }
 
-    /// 注册新的事件监听器
     async fn register_listener(&self, listener: Arc<dyn EventListener>) {
         let mut listeners = self.listeners.write().await;
         let mut names = self.listener_names.write().await;
@@ -249,7 +274,6 @@ impl EventPublisher for SimpleEventPublisher {
         tracing::debug!("Registered event listener: {}", listener_name);
     }
 
-    /// 移除事件监听器
     async fn remove_listener(&self, listener_name: &str) {
         let mut listeners = self.listeners.write().await;
         let mut names = self.listener_names.write().await;
@@ -269,72 +293,7 @@ impl EventPublisher for SimpleEventPublisher {
         }
     }
 
-    /// 获取当前监听器数量
     async fn listener_count(&self) -> usize {
         self.listeners.read().await.len()
-    }
-}
-
-/// 异步事件发布器
-///
-/// 支持异步事件分发，不阻塞事件发布者
-pub struct AsyncEventPublisher {
-    inner: SimpleEventPublisher,
-}
-
-impl AsyncEventPublisher {
-    pub fn new() -> Self {
-        Self {
-            inner: SimpleEventPublisher::new(),
-        }
-    }
-}
-
-impl Default for AsyncEventPublisher {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait::async_trait]
-impl EventPublisher for AsyncEventPublisher {
-    /// 异步发布事件（不等待监听器处理完成）
-    async fn publish_event(&self, event: Arc<dyn Event>) {
-        let listeners = self.inner.listeners.read().await;
-        let event_name = event.event_name();
-
-        tracing::debug!(
-            "Publishing event asynchronously: {} to {} listener(s)",
-            event_name,
-            listeners.len()
-        );
-
-        // 克隆监听器列表，避免长时间持锁
-        let listeners_clone: Vec<_> = listeners.iter()
-            .filter(|l| l.supports_event(event_name))
-            .map(Arc::clone)
-            .collect();
-
-        drop(listeners);
-
-        // 异步分发事件到所有监听器
-        for listener in listeners_clone {
-            let event_clone = Arc::clone(&event);
-            tokio::spawn(async move {
-                listener.on_event(event_clone).await;
-            });
-        }
-    }
-
-    async fn register_listener(&self, listener: Arc<dyn EventListener>) {
-        self.inner.register_listener(listener).await;
-    }
-
-    async fn remove_listener(&self, listener_name: &str) {
-        self.inner.remove_listener(listener_name).await;
-    }
-
-    async fn listener_count(&self) -> usize {
-        self.inner.listener_count().await
     }
 }

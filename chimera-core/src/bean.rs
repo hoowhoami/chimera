@@ -154,7 +154,7 @@ where
 {
     async fn create(&self) -> ContainerResult<Box<dyn Any + Send + Sync>> {
         let instance = (self.factory_fn)().await?;
-        Ok(Box::new(instance))
+        Ok(Box::new(instance) as Box<dyn Any + Send + Sync>)
     }
 
     fn type_id(&self) -> TypeId {

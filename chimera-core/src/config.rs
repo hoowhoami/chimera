@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::sync::RwLock;
+use std::sync::{RwLock, Arc};
 
 /// 配置值类型
 #[derive(Debug, Clone)]
@@ -184,6 +184,17 @@ impl Environment {
 impl Default for Environment {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Environment 实现 CoreComponent
+impl crate::container::CoreComponent for Environment {
+    fn core_bean_name() -> &'static str {
+        crate::constants::ENVIRONMENT_BEAN_NAME
+    }
+
+    fn get_from_context(context: &Arc<crate::container::ApplicationContext>) -> Arc<Self> {
+        Arc::clone(context.environment())
     }
 }
 

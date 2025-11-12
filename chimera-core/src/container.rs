@@ -3,17 +3,30 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::constants;
 use crate::{
     bean::{BeanDefinition, FunctionFactory},
-    error::{ContainerError, ContainerResult},
-    utils::dependency::CreationTracker,
     config::Environment,
-    event::{EventPublisher, SimpleEventPublisher, Event, EventListener, ApplicationShutdownEvent},
+    error::{ContainerError, ContainerResult},
+    event::{ApplicationShutdownEvent, AsyncEventPublisher, Event, EventListener, EventPublisher},
+    utils::dependency::CreationTracker,
     Scope,
 };
 
 /// Shutdown hook类型
 pub type ShutdownHook = Box<dyn Fn() -> ContainerResult<()> + Send + Sync>;
+
+/// 标识框架核心组件的 trait
+///
+/// 实现此 trait 的类型会被 @autowired 宏识别为核心组件，
+/// 并使用特殊的注入方式而不是通过容器查找
+pub trait CoreComponent: Send + Sync {
+    /// 获取核心组件在容器中的Bean名称
+    fn core_bean_name() -> &'static str;
+
+    /// 从ApplicationContext直接获取核心组件实例
+    fn get_from_context(context: &Arc<ApplicationContext>) -> Arc<Self>;
+}
 
 /// 容器 trait - 定义依赖注入容器的核心接口
 #[async_trait::async_trait]
@@ -55,7 +68,7 @@ pub struct ApplicationContext {
     environment: Arc<Environment>,
 
     /// 事件发布器
-    event_publisher: Arc<dyn EventPublisher>,
+    event_publisher: Arc<AsyncEventPublisher>,
 
     /// Shutdown hooks
     shutdown_hooks: RwLock<Vec<ShutdownHook>>,
@@ -73,7 +86,7 @@ impl ApplicationContext {
             type_to_name: RwLock::new(HashMap::new()),
             creation_tracker: CreationTracker::new(),
             environment: Arc::new(Environment::new()),
-            event_publisher: Arc::new(SimpleEventPublisher::new()),
+            event_publisher: Arc::new(AsyncEventPublisher::new()),
             shutdown_hooks: RwLock::new(Vec::new()),
             app_name: RwLock::new(None),
         }
@@ -101,12 +114,12 @@ impl ApplicationContext {
     }
 
     /// 获取 EventPublisher
-    pub fn event_publisher(&self) -> &Arc<dyn EventPublisher> {
+    pub fn event_publisher(&self) -> &Arc<AsyncEventPublisher> {
         &self.event_publisher
     }
 
     /// 获取 EventPublisher（别名，方便使用）
-    pub fn get_event_publisher(&self) -> &Arc<dyn EventPublisher> {
+    pub fn get_event_publisher(&self) -> &Arc<AsyncEventPublisher> {
         &self.event_publisher
     }
 
@@ -149,10 +162,7 @@ impl ApplicationContext {
         Fut: std::future::Future<Output = ContainerResult<T>> + Send + 'static,
     {
         let name = name.into();
-        let definition = BeanDefinition::new(
-            name.clone(),
-            FunctionFactory::new(factory),
-        );
+        let definition = BeanDefinition::new(name.clone(), FunctionFactory::new(factory));
         self.register(definition)
     }
 
@@ -168,11 +178,8 @@ impl ApplicationContext {
         Fut: std::future::Future<Output = ContainerResult<T>> + Send + 'static,
     {
         let name = name.into();
-        let definition = BeanDefinition::new(
-            name.clone(),
-            FunctionFactory::new(factory),
-        )
-        .with_scope(Scope::Singleton);
+        let definition = BeanDefinition::new(name.clone(), FunctionFactory::new(factory))
+            .with_scope(Scope::Singleton);
         self.register(definition)
     }
 
@@ -188,11 +195,8 @@ impl ApplicationContext {
         Fut: std::future::Future<Output = ContainerResult<T>> + Send + 'static,
     {
         let name = name.into();
-        let definition = BeanDefinition::new(
-            name.clone(),
-            FunctionFactory::new(factory),
-        )
-        .with_scope(Scope::Prototype);
+        let definition = BeanDefinition::new(name.clone(), FunctionFactory::new(factory))
+            .with_scope(Scope::Prototype);
         self.register(definition)
     }
 
@@ -222,8 +226,8 @@ impl ApplicationContext {
         }
 
         // 拓扑排序，确定初始化顺序
-        let sorted_beans = topological_sort(&dependency_map)
-            .map_err(|e| ContainerError::CircularDependency(e))?;
+        let sorted_beans =
+            topological_sort(&dependency_map).map_err(|e| ContainerError::CircularDependency(e))?;
 
         // 按层级并发初始化
         let mut levels: Vec<Vec<String>> = Vec::new();
@@ -235,9 +239,12 @@ impl ApplicationContext {
             }
 
             let deps = dependency_map.get(&bean_name).cloned().unwrap_or_default();
-            let level = deps.iter()
+            let level = deps
+                .iter()
                 .filter_map(|dep| {
-                    levels.iter().enumerate()
+                    levels
+                        .iter()
+                        .enumerate()
                         .find(|(_, level_beans)| level_beans.contains(dep))
                         .map(|(idx, _)| idx)
                 })
@@ -257,9 +264,7 @@ impl ApplicationContext {
                 .into_iter()
                 .map(|bean_name| {
                     let self_ref = self;
-                    async move {
-                        self_ref.get_bean(&bean_name).await
-                    }
+                    async move { self_ref.get_bean(&bean_name).await }
                 })
                 .collect();
 
@@ -298,7 +303,10 @@ impl ApplicationContext {
         validate_dependency_graph(&dependency_map)
             .map_err(|e| ContainerError::DependencyValidationFailed(e.to_string()))?;
 
-        tracing::info!("Dependency validation passed for {} bean(s)", dependency_map.len());
+        tracing::info!(
+            "Dependency validation passed for {} bean(s)",
+            dependency_map.len()
+        );
 
         Ok(())
     }
@@ -312,21 +320,19 @@ impl ApplicationContext {
             .ok_or_else(|| ContainerError::BeanNotFound(name.to_string()))?;
 
         // 使用工厂创建实例
-        let mut instance = definition.factory.create().await
-            .map_err(|e| {
-                // 保留循环依赖错误，不要包装它
-                match e {
-                    ContainerError::CircularDependency(_) => e,
-                    _ => ContainerError::BeanCreationFailed(format!("{}: {}", name, e))
-                }
-            })?;
+        let mut instance = definition.factory.create().await.map_err(|e| {
+            // 保留循环依赖错误，不要包装它
+            match e {
+                ContainerError::CircularDependency(_) => e,
+                _ => ContainerError::BeanCreationFailed(format!("{}: {}", name, e)),
+            }
+        })?;
 
         // 调用 init 回调（如果存在）
         if let Some(ref init_fn) = definition.init_callback {
-            init_fn(instance.as_mut())
-                .map_err(|e| ContainerError::BeanCreationFailed(
-                    format!("{} init failed: {}", name, e)
-                ))?;
+            init_fn(instance.as_mut()).map_err(|e| {
+                ContainerError::BeanCreationFailed(format!("{} init failed: {}", name, e))
+            })?;
         }
 
         Ok(Arc::from(instance))
@@ -338,7 +344,10 @@ impl ApplicationContext {
         tracing::info!("Starting application shutdown");
 
         // 1. 发布 ApplicationShutdownEvent
-        let app_name = self.get_app_name().await.unwrap_or_else(|| "Application".to_string());
+        let app_name = self
+            .get_app_name()
+            .await
+            .unwrap_or_else(|| "Application".to_string());
         let shutdown_event = Arc::new(ApplicationShutdownEvent::new(app_name));
         self.publish_event(shutdown_event).await;
 
@@ -360,7 +369,8 @@ impl ApplicationContext {
         let definitions_map: std::collections::HashMap<String, bool> = {
             let definitions = self.definitions.read().await;
 
-            definitions.iter()
+            definitions
+                .iter()
                 .map(|(name, def)| (name.clone(), def.destroy_callback.is_some()))
                 .collect()
         };
@@ -463,12 +473,10 @@ impl Container for ApplicationContext {
         let scope = {
             let definitions = self.definitions.read().await;
 
-            let definition = definitions
-                .get(name)
-                .ok_or_else(|| {
-                    tracing::debug!("Bean '{}' not found in container", name);
-                    ContainerError::BeanNotFound(name.to_string())
-                })?;
+            let definition = definitions.get(name).ok_or_else(|| {
+                tracing::debug!("Bean '{}' not found in container", name);
+                ContainerError::BeanNotFound(name.to_string())
+            })?;
 
             definition.scope
         };
@@ -486,29 +494,41 @@ impl Container for ApplicationContext {
                 }
 
                 // 检查循环依赖
-                if self.creation_tracker.is_creating(name)
-                    .map_err(|e| ContainerError::Other(anyhow::anyhow!("{}", e)))? {
-                    let creating_chain = self.creation_tracker.current_creating()
+                if self
+                    .creation_tracker
+                    .is_creating(name)
+                    .map_err(|e| ContainerError::Other(anyhow::anyhow!("{}", e)))?
+                {
+                    let creating_chain = self
+                        .creation_tracker
+                        .current_creating()
                         .map_err(|e| ContainerError::Other(anyhow::anyhow!("{}", e)))?;
 
                     tracing::error!(
                         "Circular dependency detected while creating '{}'. Creation chain: {:?}",
-                        name, creating_chain
+                        name,
+                        creating_chain
                     );
 
-                    return Err(ContainerError::CircularDependency(
-                        format!("{} -> {}", creating_chain.join(" -> "), name)
-                    ));
+                    return Err(ContainerError::CircularDependency(format!(
+                        "{} -> {}",
+                        creating_chain.join(" -> "),
+                        name
+                    )));
                 }
 
                 tracing::info!("Creating shared instance of singleton bean '{}'", name);
 
                 // 标记为正在创建
-                if !self.creation_tracker.start_creating(name)
-                    .map_err(|e| ContainerError::Other(anyhow::anyhow!("{}", e)))? {
-                    return Err(ContainerError::CircularDependency(
-                        format!("Detected circular dependency on '{}'", name)
-                    ));
+                if !self
+                    .creation_tracker
+                    .start_creating(name)
+                    .map_err(|e| ContainerError::Other(anyhow::anyhow!("{}", e)))?
+                {
+                    return Err(ContainerError::CircularDependency(format!(
+                        "Detected circular dependency on '{}'",
+                        name
+                    )));
                 }
 
                 // 使用 RAII 模式确保在任何情况下都会清理标记
@@ -520,7 +540,11 @@ impl Container for ApplicationContext {
                 impl<'a> Drop for CreationGuard<'a> {
                     fn drop(&mut self) {
                         if let Err(e) = self.tracker.finish_creating(&self.name) {
-                            tracing::error!("Failed to clear creation tracker for '{}': {}", self.name, e);
+                            tracing::error!(
+                                "Failed to clear creation tracker for '{}': {}",
+                                self.name,
+                                e
+                            );
                         }
                     }
                 }
@@ -599,12 +623,7 @@ impl Container for ApplicationContext {
     fn contains_bean(&self, name: &str) -> bool {
         tokio::task::block_in_place(|| {
             let handle = tokio::runtime::Handle::current();
-            handle.block_on(async {
-                self.definitions
-                    .read()
-                    .await
-                    .contains_key(name)
-            })
+            handle.block_on(async { self.definitions.read().await.contains_key(name) })
         })
     }
 
@@ -616,11 +635,7 @@ impl Container for ApplicationContext {
             let handle = tokio::runtime::Handle::current();
             handle.block_on(async {
                 // TypeId查找
-                if self.type_to_name
-                    .read()
-                    .await
-                    .contains_key(&type_id)
-                {
+                if self.type_to_name.read().await.contains_key(&type_id) {
                     return true;
                 }
 
@@ -639,14 +654,7 @@ impl Container for ApplicationContext {
     fn get_bean_names(&self) -> Vec<String> {
         tokio::task::block_in_place(|| {
             let handle = tokio::runtime::Handle::current();
-            handle.block_on(async {
-                self.definitions
-                    .read()
-                    .await
-                    .keys()
-                    .cloned()
-                    .collect()
-            })
+            handle.block_on(async { self.definitions.read().await.keys().cloned().collect() })
         })
     }
 }
@@ -661,6 +669,94 @@ impl ApplicationContextBuilder {
         Self {
             context: ApplicationContext::new(),
         }
+    }
+
+    /// 注册框架核心组件（内部方法，不可扩展）
+    async fn register_core_components(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+        tracing::debug!("Registering framework core components...");
+
+        // 1. 注册 ApplicationContext 自身
+        Self::register_application_context(context).await?;
+
+        // 2. 注册 Environment
+        Self::register_environment(context).await?;
+
+        // 3. 注册 EventPublisher
+        Self::register_event_publisher(context).await?;
+
+        tracing::info!("Framework core components registered successfully");
+        Ok(())
+    }
+
+    /// 注册 ApplicationContext 自身到容器
+    ///
+    /// Bean名称: "applicationContext"
+    /// 类型: Arc<ApplicationContext>
+    async fn register_application_context(
+        context: &Arc<ApplicationContext>,
+    ) -> ContainerResult<()> {
+        tracing::trace!("Registering ApplicationContext as bean");
+
+        let context_clone = Arc::clone(context);
+        let definition = BeanDefinition::new(
+            constants::APPLICATION_CONTEXT_BEAN_NAME,
+            FunctionFactory::<Arc<ApplicationContext>, _, _>::new(move || {
+                let ctx = Arc::clone(&context_clone);
+                async move { Ok(ctx) }
+            }),
+        )
+        .with_scope(Scope::Singleton);
+
+        context.register(definition)?;
+
+        tracing::debug!("ApplicationContext registered as bean 'applicationContext'");
+        Ok(())
+    }
+
+    /// 注册 Environment 到容器
+    ///
+    /// Bean名称: "environment"
+    /// 类型: Arc<Environment>
+    async fn register_environment(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+        tracing::trace!("Registering Environment as bean");
+
+        let env = Arc::clone(context.environment());
+        let definition = BeanDefinition::new(
+            constants::ENVIRONMENT_BEAN_NAME,
+            FunctionFactory::<Arc<crate::Environment>, _, _>::new(move || {
+                let environment = Arc::clone(&env);
+                async move { Ok(environment) }
+            }),
+        )
+        .with_scope(Scope::Singleton);
+
+        context.register(definition)?;
+
+        tracing::debug!("Environment registered as bean 'environment'");
+        Ok(())
+    }
+
+    /// 注册 EventPublisher 到容器
+    ///
+    /// Bean名称: "eventPublisher"
+    /// 类型: Arc<AsyncEventPublisher>
+    async fn register_event_publisher(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+        tracing::trace!("Registering EventPublisher as bean");
+
+        let publisher = Arc::clone(context.event_publisher());
+        let definition = BeanDefinition::new(
+            constants::EVENT_PUBLISHER_BEAN_NAME,
+            FunctionFactory::<Arc<crate::AsyncEventPublisher>, _, _>::new(move || {
+                let event_publisher = Arc::clone(&publisher);
+                async move { Ok(event_publisher) }
+            }),
+        )
+        .with_scope(Scope::Singleton);
+
+        context.register(definition)?;
+
+        tracing::debug!("EventPublisher registered as bean 'eventPublisher'");
+        Ok(())
     }
 
     /// 注册 Bean
@@ -718,14 +814,38 @@ impl ApplicationContextBuilder {
 
     /// 构建上下文
     pub async fn build(self) -> ContainerResult<Arc<ApplicationContext>> {
+        // 构建上下文
+        let context = Arc::new(self.context);
+
+        // 自动注册框架核心组件
+        tracing::debug!("Auto-registering framework core components...");
+        Self::register_core_components(&context)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to register core components: {}", e);
+                e
+            })?;
+        tracing::info!("Core components auto-registration completed");
+
         // 注意：不在这里初始化，等待所有组件扫描完成后再初始化
         // 这样可以确保 @Component 和 @ConfigurationProperties 都被注册后才初始化
-        Ok(Arc::new(self.context))
+        Ok(context)
     }
 }
 
 impl Default for ApplicationContextBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// ApplicationContext 实现 CoreComponent
+impl CoreComponent for ApplicationContext {
+    fn core_bean_name() -> &'static str {
+        crate::constants::APPLICATION_CONTEXT_BEAN_NAME
+    }
+
+    fn get_from_context(context: &Arc<ApplicationContext>) -> Arc<Self> {
+        Arc::clone(context)
     }
 }
