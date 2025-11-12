@@ -14,6 +14,12 @@ pub trait Event: Any + Send + Sync {
     /// 获取事件时间戳
     fn timestamp(&self) -> SystemTime;
 
+    /// 获取事件源（可选）
+    /// 返回触发此事件的对象
+    fn source(&self) -> Option<Arc<dyn Any + Send + Sync>> {
+        None
+    }
+
     /// 转换为 Any 引用，用于类型转换
     fn as_any(&self) -> &dyn Any;
 }
@@ -89,43 +95,6 @@ impl Event for ApplicationShutdownEvent {
     }
 }
 
-/// 自定义应用事件
-///
-/// 允许用户发布自定义事件
-#[derive(Debug, Clone)]
-pub struct CustomEvent {
-    /// 事件名称
-    pub name: String,
-    /// 事件数据
-    pub data: Arc<dyn Any + Send + Sync>,
-    /// 事件时间戳
-    pub timestamp: SystemTime,
-}
-
-impl CustomEvent {
-    pub fn new(name: String, data: Arc<dyn Any + Send + Sync>) -> Self {
-        Self {
-            name,
-            data,
-            timestamp: SystemTime::now(),
-        }
-    }
-}
-
-impl Event for CustomEvent {
-    fn event_name(&self) -> &str {
-        &self.name
-    }
-
-    fn timestamp(&self) -> SystemTime {
-        self.timestamp
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
 /// 事件监听器 trait
 ///
 /// 类似 Spring 的 ApplicationListener
@@ -153,6 +122,51 @@ pub trait EventListener: Send + Sync {
 pub trait TypedEventListener<E: Event>: Send + Sync {
     /// 处理特定类型的事件
     async fn on_event(&self, event: &E);
+
+    /// 获取监听器名称（用于日志）
+    fn listener_name(&self) -> &str {
+        "AnonymousTypedListener"
+    }
+}
+
+/// 类型化事件监听器适配器
+///
+/// 将 TypedEventListener<E> 适配为 EventListener
+pub struct TypedEventListenerAdapter<E: Event + 'static, L: TypedEventListener<E>> {
+    listener: Arc<L>,
+    _phantom: std::marker::PhantomData<E>,
+}
+
+impl<E: Event + 'static, L: TypedEventListener<E>> TypedEventListenerAdapter<E, L> {
+    pub fn new(listener: Arc<L>) -> Self {
+        Self {
+            listener,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<E: Event + 'static, L: TypedEventListener<E> + 'static> EventListener for TypedEventListenerAdapter<E, L> {
+    async fn on_event(&self, event: Arc<dyn Event>) {
+        // 尝试将事件转换为具体类型
+        if let Some(typed_event) = event.as_any().downcast_ref::<E>() {
+            self.listener.on_event(typed_event).await;
+        }
+    }
+
+    fn listener_name(&self) -> &str {
+        self.listener.listener_name()
+    }
+
+    fn supports_event(&self, event_name: &str) -> bool {
+        // 只支持特定类型的事件
+        // 这里我们通过类型名称来判断
+        let event_type_name = std::any::type_name::<E>();
+        // 提取类型名称的最后一部分（去掉路径）
+        let short_name = event_type_name.split("::").last().unwrap_or(event_type_name);
+        event_name == short_name
+    }
 }
 
 /// 事件发布器 trait

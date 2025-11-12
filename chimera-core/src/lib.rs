@@ -35,8 +35,8 @@ pub use logging::{LoggingConfig, LogLevel, LogFormat};
 pub use event::{
     Event, EventListener, TypedEventListener, EventPublisher,
     SimpleEventPublisher, AsyncEventPublisher,
+    TypedEventListenerAdapter,
     ApplicationStartedEvent, ApplicationShutdownEvent,
-    CustomEvent,
 };
 
 // 导出 async_trait，供宏使用
@@ -60,8 +60,8 @@ pub mod prelude {
     pub use crate::event::{
         Event, EventListener, TypedEventListener, EventPublisher,
         SimpleEventPublisher, AsyncEventPublisher,
+        TypedEventListenerAdapter,
         ApplicationStartedEvent, ApplicationShutdownEvent,
-        CustomEvent,
     };
     pub use crate::utils;
 }

@@ -2,6 +2,75 @@ use chimera_core::prelude::*;
 use chimera_core::async_trait;
 use chimera_macros::{Component, ConfigurationProperties};
 use std::sync::Arc;
+use std::time::SystemTime;
+
+// ==================== 自定义事件定义 ====================
+
+/// 用户登录事件
+#[derive(Debug, Clone)]
+pub struct UserLoginEvent {
+    pub user_id: String,
+    pub username: String,
+    pub timestamp: SystemTime,
+}
+
+impl UserLoginEvent {
+    pub fn new(user_id: String, username: String) -> Self {
+        Self {
+            user_id,
+            username,
+            timestamp: SystemTime::now(),
+        }
+    }
+}
+
+impl Event for UserLoginEvent {
+    fn event_name(&self) -> &str {
+        "UserLoginEvent"
+    }
+
+    fn timestamp(&self) -> SystemTime {
+        self.timestamp
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// 订单创建事件
+#[derive(Debug, Clone)]
+pub struct OrderCreatedEvent {
+    pub order_id: i64,
+    pub user_id: String,
+    pub amount: f64,
+    pub timestamp: SystemTime,
+}
+
+impl OrderCreatedEvent {
+    pub fn new(order_id: i64, user_id: String, amount: f64) -> Self {
+        Self {
+            order_id,
+            user_id,
+            amount,
+            timestamp: SystemTime::now(),
+        }
+    }
+}
+
+impl Event for OrderCreatedEvent {
+    fn event_name(&self) -> &str {
+        "OrderCreatedEvent"
+    }
+
+    fn timestamp(&self) -> SystemTime {
+        self.timestamp
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
 
 // ==================== 事件监听器定义 ====================
 
@@ -48,6 +117,47 @@ impl EventListener for LoggingEventListener {
 
     fn listener_name(&self) -> &str {
         "LoggingEventListener"
+    }
+}
+
+/// 类型化用户登录事件监听器 - 只监听UserLoginEvent
+#[derive(Component, Clone, Debug)]
+#[bean("userLoginListener")]
+struct UserLoginListener {
+    #[autowired]
+    app_config: Arc<AppConfig>,
+}
+
+#[async_trait::async_trait]
+impl TypedEventListener<UserLoginEvent> for UserLoginListener {
+    async fn on_event(&self, event: &UserLoginEvent) {
+        println!("\n👤 [UserLoginListener] User logged in!");
+        println!("   User ID: {}", event.user_id);
+        println!("   Username: {}", event.username);
+        println!("   App: {}", self.app_config.name);
+    }
+
+    fn listener_name(&self) -> &str {
+        "UserLoginListener"
+    }
+}
+
+/// 类型化订单创建事件监听器 - 只监听OrderCreatedEvent
+#[derive(Component, Clone, Debug)]
+#[bean("orderCreatedListener")]
+struct OrderCreatedListener;
+
+#[async_trait::async_trait]
+impl TypedEventListener<OrderCreatedEvent> for OrderCreatedListener {
+    async fn on_event(&self, event: &OrderCreatedEvent) {
+        println!("\n🛒 [OrderCreatedListener] Order created!");
+        println!("   Order ID: {}", event.order_id);
+        println!("   User ID: {}", event.user_id);
+        println!("   Amount: ${:.2}", event.amount);
+    }
+
+    fn listener_name(&self) -> &str {
+        "OrderCreatedListener"
     }
 }
 
@@ -215,6 +325,19 @@ async fn main() -> ApplicationResult<()> {
         .env_prefix("APP_")
         .run().await?;
 
+    // 注册类型化事件监听器（在应用启动后）
+    {
+        let user_login_listener = context.get_bean_by_type::<UserLoginListener>().await?;
+        let adapter = TypedEventListenerAdapter::new(user_login_listener);
+        context.register_listener(Arc::new(adapter)).await;
+
+        let order_created_listener = context.get_bean_by_type::<OrderCreatedListener>().await?;
+        let adapter = TypedEventListenerAdapter::new(order_created_listener);
+        context.register_listener(Arc::new(adapter)).await;
+
+        println!("✅ Typed event listeners registered\n");
+    }
+
     println!("\n╔════════════════════════════════════════════════════╗");
     println!("║              Application Started                  ║");
     println!("╚════════════════════════════════════════════════════╝");
@@ -263,17 +386,19 @@ async fn main() -> ApplicationResult<()> {
     // 发布自定义事件
     println!("📤 Publishing custom events...\n");
 
-    let custom_event1 = Arc::new(CustomEvent::new(
-        "UserLoginEvent".to_string(),
-        Arc::new("user123".to_string()),
+    // 发布类型化事件（新方式 - 类型安全）
+    let user_login_event = Arc::new(UserLoginEvent::new(
+        "user_123".to_string(),
+        "john_doe".to_string(),
     ));
-    context.publish_event(custom_event1).await;
+    context.publish_event(user_login_event).await;
 
-    let custom_event2 = Arc::new(CustomEvent::new(
-        "OrderCreatedEvent".to_string(),
-        Arc::new(12345_i32),
+    let order_created_event = Arc::new(OrderCreatedEvent::new(
+        12345,
+        "user_123".to_string(),
+        299.99,
     ));
-    context.publish_event(custom_event2).await;
+    context.publish_event(order_created_event).await;
 
     println!();
 
