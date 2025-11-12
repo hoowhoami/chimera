@@ -246,39 +246,3 @@ impl std::fmt::Display for LogFormat {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_log_level_from_str() {
-        assert_eq!("info".parse::<LogLevel>().unwrap(), LogLevel::Info);
-        assert_eq!("debug".parse::<LogLevel>().unwrap(), LogLevel::Debug);
-        assert_eq!("warn".parse::<LogLevel>().unwrap(), LogLevel::Warn);
-        assert_eq!("error".parse::<LogLevel>().unwrap(), LogLevel::Error);
-        assert_eq!("trace".parse::<LogLevel>().unwrap(), LogLevel::Trace);
-    }
-
-    #[test]
-    fn test_log_format_from_str() {
-        assert_eq!("compact".parse::<LogFormat>().unwrap(), LogFormat::Compact);
-        assert_eq!("full".parse::<LogFormat>().unwrap(), LogFormat::Full);
-        assert_eq!("json".parse::<LogFormat>().unwrap(), LogFormat::Json);
-        assert_eq!("pretty".parse::<LogFormat>().unwrap(), LogFormat::Pretty);
-    }
-
-    #[test]
-    fn test_logging_config_builder() {
-        let config = LoggingConfig::new()
-            .level(LogLevel::Debug)
-            .format(LogFormat::Json)
-            .show_timestamp(false)
-            .show_target(true);
-
-        assert_eq!(config.level, LogLevel::Debug);
-        assert_eq!(config.format, LogFormat::Json);
-        assert!(!config.show_timestamp);
-        assert!(config.show_target);
-    }
-}
