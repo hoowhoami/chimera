@@ -1,0 +1,13 @@
+[package]
+name = "app-demo"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chimera-core = { path = "../../chimera-core" }
+chimera-macros = { path = "../../chimera-macros" }
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+inventory = "0.3"
+tokio = { workspace = true }

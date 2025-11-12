@@ -1,0 +1,204 @@
+use crate::{ApplicationContext, ContainerResult, Scope, Container};
+use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+
+/// Component注册函数类型
+pub type ComponentRegistrar = fn(&Arc<ApplicationContext>) -> Pin<Box<dyn Future<Output = ContainerResult<()>> + Send>>;
+
+/// Component注册表 - 用于inventory收集
+pub struct ComponentRegistry {
+    pub registrar: ComponentRegistrar,
+    pub name: &'static str,
+}
+
+inventory::collect!(ComponentRegistry);
+
+/// ConfigurationProperties注册函数类型
+pub type ConfigurationPropertiesRegistrar = fn(&Arc<ApplicationContext>) -> Pin<Box<dyn Future<Output = ContainerResult<()>> + Send>>;
+
+/// ConfigurationProperties注册表 - 用于inventory收集
+pub struct ConfigurationPropertiesRegistry {
+    pub registrar: ConfigurationPropertiesRegistrar,
+    pub name: &'static str,
+}
+
+inventory::collect!(ConfigurationPropertiesRegistry);
+
+/// Component trait - 用于标记可以自动注册到容器的组件
+///
+/// 通过 #[derive(Component)] 宏自动实现
+///
+/// # 示例
+///
+/// ```ignore
+/// use chimera_core::prelude::*;
+/// use chimera_macros::Component;
+/// use std::sync::Arc;
+///
+/// #[derive(Component)]
+/// #[bean("userService")]
+/// #[scope("singleton")]
+/// struct UserService {
+///     #[autowired]
+///     db: Arc<DatabaseService>,
+/// }
+/// ```
+#[async_trait::async_trait]
+pub trait Component: Sized + Send + Sync + 'static {
+    /// 获取 Bean 名称
+    fn bean_name() -> &'static str;
+
+    /// 获取作用域
+    fn scope() -> Scope {
+        Scope::Singleton
+    }
+
+    /// 是否延迟初始化
+    fn lazy() -> bool {
+        false
+    }
+
+    /// 获取依赖的 bean 名称列表
+    fn dependencies() -> Vec<String> {
+        Vec::new()
+    }
+
+    /// 初始化回调（类似 @PostConstruct）
+    ///
+    /// 返回 None 表示没有初始化逻辑
+    fn init_callback() -> Option<fn(&mut Self) -> ContainerResult<()>> {
+        None
+    }
+
+    /// 销毁回调（类似 @PreDestroy）
+    ///
+    /// 返回 None 表示没有清理逻辑
+    fn destroy_callback() -> Option<fn(&mut Self) -> ContainerResult<()>> {
+        None
+    }
+
+    /// 从容器创建实例
+    /// 自动注入依赖
+    async fn create_from_context(context: &Arc<ApplicationContext>) -> ContainerResult<Self>;
+
+    /// 注册到容器
+    async fn register(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+        let ctx = Arc::clone(context);
+        let scope = Self::scope();
+        let lazy = Self::lazy();
+        let dependencies = Self::dependencies();
+
+        let mut definition = crate::BeanDefinition::new(
+            Self::bean_name(),
+            crate::bean::FunctionFactory::new(move || {
+                let ctx = Arc::clone(&ctx);
+                async move {
+                    Self::create_from_context(&ctx).await
+                }
+            }),
+        )
+        .with_scope(scope)
+        .with_lazy(lazy)
+        .with_dependencies(dependencies);
+
+        // 添加初始化回调
+        if let Some(init_fn) = Self::init_callback() {
+            definition = definition.with_init(move |bean: &mut dyn std::any::Any| {
+                if let Some(typed_bean) = bean.downcast_mut::<Self>() {
+                    init_fn(typed_bean)
+                } else {
+                    Err(crate::ContainerError::BeanCreationFailed(
+                        "Failed to downcast bean in init callback".to_string()
+                    ))
+                }
+            });
+        }
+
+        // 添加销毁回调
+        if let Some(destroy_fn) = Self::destroy_callback() {
+            definition = definition.with_destroy(move |bean: &mut dyn std::any::Any| {
+                if let Some(typed_bean) = bean.downcast_mut::<Self>() {
+                    destroy_fn(typed_bean)
+                } else {
+                    Err(crate::ContainerError::BeanCreationFailed(
+                        "Failed to downcast bean in destroy callback".to_string()
+                    ))
+                }
+            });
+        }
+
+        context.as_ref().register(definition)?;
+        Ok(())
+    }
+}
+
+impl ApplicationContext {
+    /// 自动扫描并注册所有Component
+    ///
+    /// 这会自动注册所有使用#[derive(Component)]标记的类型
+    pub async fn scan_components(self: &Arc<Self>) -> ContainerResult<()> {
+        tracing::info!("Starting component scan for @Component annotated beans");
+
+        let components: Vec<_> = inventory::iter::<ComponentRegistry>().collect();
+        let total = components.len();
+
+        if total == 0 {
+            tracing::warn!("No @Component annotated beans found in classpath");
+            return Ok(());
+        }
+
+        tracing::info!("Found {} @Component annotated bean(s) to register", total);
+
+        for (idx, component) in components.iter().enumerate() {
+            tracing::debug!(
+                "Registering component [{}/{}]: '{}'",
+                idx + 1,
+                total,
+                component.name
+            );
+
+            (component.registrar)(self).await.map_err(|e| {
+                tracing::error!("Failed to register component '{}': {}", component.name, e);
+                e
+            })?;
+        }
+
+        tracing::info!("Component scan completed successfully, registered {} bean(s)", total);
+        Ok(())
+    }
+
+    /// 自动扫描并注册所有ConfigurationProperties
+    ///
+    /// 这会自动绑定所有使用#[derive(ConfigurationProperties)]标记的类型
+    pub async fn scan_configuration_properties(self: &Arc<Self>) -> ContainerResult<()> {
+        tracing::info!("Starting configuration properties scan for @ConfigurationProperties annotated beans");
+
+        let config_props: Vec<_> = inventory::iter::<ConfigurationPropertiesRegistry>().collect();
+        let total = config_props.len();
+
+        if total == 0 {
+            tracing::debug!("No @ConfigurationProperties annotated beans found in classpath");
+            return Ok(());
+        }
+
+        tracing::info!("Found {} @ConfigurationProperties annotated bean(s) to bind", total);
+
+        for (idx, config_prop) in config_props.iter().enumerate() {
+            tracing::debug!(
+                "Binding configuration properties [{}/{}]: '{}'",
+                idx + 1,
+                total,
+                config_prop.name
+            );
+
+            (config_prop.registrar)(self).await.map_err(|e| {
+                tracing::error!("Failed to bind configuration properties '{}': {}", config_prop.name, e);
+                e
+            })?;
+        }
+
+        tracing::info!("Configuration properties scan completed successfully, bound {} bean(s)", total);
+        Ok(())
+    }
+}

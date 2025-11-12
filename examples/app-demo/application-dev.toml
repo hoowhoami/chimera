@@ -1,0 +1,13 @@
+[app]
+name = "ChimeraDemoDev"
+version = "1.0.0-dev"
+
+[database]
+host = "localhost.dev"
+port = 5431
+max-connections = 100
+
+[server]
+host = "localhost"
+port = 9000
+workers = 10

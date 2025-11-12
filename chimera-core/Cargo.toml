@@ -1,0 +1,23 @@
+[package]
+name = "chimera-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core dependency injection container for Chimera framework"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+inventory = "0.3"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+toml = "0.8"
+async-trait = "0.1"
+futures = "0.3"
+
+[dev-dependencies]
+chimera-macros = { path = "../chimera-macros" }
