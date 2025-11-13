@@ -1,8 +1,35 @@
 # Chimera
 
-一个受 Spring Boot 启发的 Rust 依赖注入框架，提供类型安全、线程安全的企业级应用开发体验。
+一个受 Spring Boot 启发的 Rust 应用开发框架，提供依赖注入、Web 服务器、配置管理等企业级功能，让您以类型安全、线程安全的方式快速构建 Rust 应用。
+
+## 特点
+
+- 🚀 **Spring Boot 风格** - 熟悉的注解和开发体验
+- 🔒 **类型安全** - 编译期依赖检查，运行时零成本
+- 🧵 **线程安全** - 所有 Bean 都是 `Send + Sync`
+- 🌐 **Web 框架** - 基于 Axum 的高性能 Web 服务器
+- ⚙️ **配置管理** - 多源配置、环境切换、类型绑定
+- 📦 **依赖注入** - 自动装配、生命周期管理、事件系统
 
 ## 核心特性
+
+### Web 框架 (Chimera Web)
+
+基于 Axum 构建的 Spring Boot 风格 Web 框架：
+
+- **@Controller** - 通过注解定义控制器，自动注册路由
+- **自动路由** - 无需手动配置，方法注解自动生成路由
+- **参数注入** - Spring Boot 风格的提取器：
+  - `Autowired<T>` - 从 DI 容器注入 Bean（类似 @Autowired）
+  - `PathVariable<T>` - 从路径参数提取（类似 @PathVariable）
+  - `RequestBody<T>` - 从 JSON body 反序列化（类似 @RequestBody）
+  - `RequestParam<T>` - 从 query 参数提取（类似 @RequestParam）
+  - `FormData<T>` - 从表单数据提取（类似 @ModelAttribute）
+  - `RequestHeaders` - 提取 HTTP 请求头（类似 @RequestHeader）
+- **类型安全** - 编译时检查所有参数类型
+- **依赖注入集成** - Controller 无缝访问 DI 容器中的 Bean
+- **灵活组合** - 在一个方法中使用多个提取器
+- **自动错误处理** - 提取失败自动返回合适的 HTTP 状态码
 
 ### 依赖注入 (Dependency Injection)
 
@@ -70,12 +97,88 @@
 查看完整功能演示：
 
 ```bash
-# 运行综合示例 - 展示所有核心特性
+# 运行 Web 应用示例 - 展示 Web 框架所有特性
+cargo run -p web-demo
+
+# 运行综合示例 - 展示依赖注入核心特性
 cargo run -p app-demo
 
 # 测试环境变量覆盖
 DEMO_DATABASE_URL=custom cargo run -p app-demo
 DEMO_SERVER_PORT=9000 cargo run -p app-demo
+```
+
+### Web 应用开发
+
+使用 Chimera Web 构建 RESTful API：
+
+```rust
+use chimera_core::prelude::*;
+use chimera_core_macros::Component;
+use chimera_web::prelude::*;
+use chimera_web_macros::{Controller, controller, get_mapping, post_mapping};
+use chimera_web::extractors::{PathVariable, RequestBody};
+
+// 1. 定义 Controller
+#[derive(Controller, Component, Clone)]
+#[route("/api/users")]
+struct UserController {
+    #[autowired]
+    user_service: Arc<UserService>,
+}
+
+#[controller]
+impl UserController {
+    // GET /api/users/:id - 使用 PathVariable 提取路径参数
+    #[get_mapping("/:id")]
+    async fn get_user(&self, PathVariable(id): PathVariable<u32>) -> impl IntoResponse {
+        match self.user_service.find_by_id(id).await {
+            Some(user) => ResponseEntity::ok(user),
+            None => ResponseEntity::not_found(json!({"error": "User not found"}))
+        }
+    }
+
+    // POST /api/users - 使用 RequestBody 提取 JSON
+    #[post_mapping("/")]
+    async fn create_user(&self, RequestBody(req): RequestBody<CreateUserRequest>) -> impl IntoResponse {
+        let user = self.user_service.create(req).await;
+        ResponseEntity::created(user)
+    }
+}
+
+// 2. 启动应用
+#[tokio::main]
+async fn main() -> ApplicationResult<()> {
+    let app = ChimeraApplication::new("MyApp")
+        .config_file("application.toml")
+        .run()
+        .await?;
+
+    app.wait_for_shutdown().await?;
+    Ok(())
+}
+```
+
+### 添加依赖
+
+在您的 `Cargo.toml` 中添加：
+
+```toml
+[dependencies]
+# 核心依赖注入框架
+chimera-core = "0.1"
+chimera-core-macros = "0.1"
+
+# Web 框架（可选）
+chimera-web = "0.1"
+chimera-web-macros = "0.1"
+
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+
+# 序列化（Web 应用需要）
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 ```
 
 ### 基本使用流程
@@ -85,7 +188,34 @@ DEMO_SERVER_PORT=9000 cargo run -p app-demo
 3. **启动应用** - 调用 `ChimeraApplication::new().run()` 一行启动
 4. **使用服务** - 从 ApplicationContext 获取 Bean 并调用
 
+## 项目结构
+
+```
+chimera/
+├── chimera-core/          # 核心依赖注入框架
+│   ├── application.rs     # 应用启动器
+│   ├── context.rs         # ApplicationContext 容器
+│   ├── config.rs          # 配置管理
+│   └── events.rs          # 事件系统
+├── chimera-core-macros/   # 核心宏定义
+│   ├── component.rs       # @Component 宏
+│   └── config.rs          # @ConfigurationProperties 宏
+├── chimera-web/           # Web 框架
+│   ├── server.rs          # Web 服务器
+│   ├── extractors.rs      # 参数提取器
+│   ├── controller.rs      # Controller 特质
+│   └── middleware.rs      # 中间件
+├── chimera-web-macros/    # Web 宏定义
+│   ├── controller.rs      # @Controller 宏
+│   └── route.rs           # 路由映射宏
+└── examples/
+    ├── app-demo/          # 依赖注入示例
+    └── web-demo/          # Web 框架示例
+```
+
 ## 核心注解说明
+
+### 依赖注入注解
 
 | 注解 | 作用 | 示例 |
 |------|------|------|
@@ -101,11 +231,39 @@ DEMO_SERVER_PORT=9000 cargo run -p app-demo
 | `#[destroy]` | 销毁回调 | Bean 销毁前执行 |
 | `#[event_listener]` | 事件监听器 | 监听应用事件 |
 
+### Web 框架注解
+
+| 注解 | 作用 | 示例 |
+|------|------|------|
+| `#[derive(Controller)]` | 标记为控制器 | 定义 REST API |
+| `#[route("/path")]` | 指定控制器基础路径 | `/api`, `/users` |
+| `#[controller]` | 标记 impl 块为控制器实现 | 自动注册方法路由 |
+| `#[get_mapping("/path")]` | 映射 GET 请求 | 查询操作 |
+| `#[post_mapping("/path")]` | 映射 POST 请求 | 创建操作 |
+| `#[put_mapping("/path")]` | 映射 PUT 请求 | 更新操作 |
+| `#[delete_mapping("/path")]` | 映射 DELETE 请求 | 删除操作 |
+| `#[patch_mapping("/path")]` | 映射 PATCH 请求 | 部分更新 |
+| `#[request_mapping("/path")]` | 映射所有 HTTP 方法 | 通用处理 |
+
+### Web 提取器
+
+在 controller 方法中直接使用，用于提取请求参数：
+
+| 提取器 | 作用 | Spring Boot 等价 |
+|--------|------|------------------|
+| `PathVariable<T>` | 提取路径参数 | `@PathVariable` |
+| `RequestBody<T>` | 提取 JSON body | `@RequestBody` |
+| `RequestParam<T>` | 提取 query 参数 | `@RequestParam` |
+| `FormData<T>` | 提取表单数据 | `@ModelAttribute` |
+| `RequestHeaders` | 提取请求头 | `@RequestHeader` |
+| `Autowired<T>` | 注入 Bean | `@Autowired` |
+
 ## 示例场景
 
 框架适用于以下场景：
 
-- **Web 应用** - 结合 Actix-web、Axum 等 Web 框架构建 RESTful API
+- **RESTful API** - 使用 Chimera Web 快速构建类型安全的 REST API
+- **Web 应用** - 完整的 Web 应用开发，包括表单处理、文件上传等
 - **微服务** - 构建可配置、可测试的微服务应用
 - **后台任务** - 定时任务、消息队列消费者等
 - **命令行工具** - 复杂的企业级 CLI 工具
@@ -138,6 +296,26 @@ Bean 是容器管理的对象实例，特点：
 4. 按依赖顺序创建 Bean
 5. 自动注入依赖到字段
 
+### Web 架构
+
+Chimera Web 基于 Axum 构建，在启动时：
+1. 扫描所有标记 `@Controller` 的控制器
+2. 从 DI 容器中获取控制器实例
+3. 解析每个控制器方法的路由映射注解
+4. 自动生成路由处理函数，支持参数提取器
+5. 注册到 Axum Router
+6. 启动 HTTP 服务器
+
+**路由注册流程**：
+```
+@Controller -> 扫描方法 -> 解析注解 -> 生成 handler -> 注入提取器 -> 注册到 Router
+```
+
+**请求处理流程**：
+```
+HTTP Request -> Router 匹配 -> 提取器解析参数 -> 调用 controller 方法 -> 返回 Response
+```
+
 ## 设计原则
 
 - **类型安全** - 充分利用 Rust 类型系统，编译期检查
@@ -149,9 +327,21 @@ Bean 是容器管理的对象实例，特点：
 
 ## 后续规划
 
+### 核心框架
 - [ ] 添加容器启动性能分析工具
 - [ ] 支持 AOP 切面编程
 - [ ] 提供 Bean 工厂扩展机制
+
+### Web 框架
+- [ ] 添加文件上传支持（multipart/form-data）
+- [ ] 实现 Cookie 和 Session 提取器
+- [ ] 添加 WebSocket 支持
+- [ ] 实现全局异常处理器
+- [ ] 添加请求/响应拦截器
+- [ ] 实现类似 Spring Validate 的参数验证
+- [ ] 支持 OpenAPI/Swagger 文档自动生成
+- [ ] 添加速率限制中间件
+- [ ] 支持 gRPC
 
 ## 贡献
 
