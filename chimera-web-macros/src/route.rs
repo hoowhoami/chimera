@@ -59,8 +59,18 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 } else if path_params.len() == 1 && !fn_params.is_empty() {
                     // 单个路径参数的情况
-                    let param_name = &fn_params[0];
+                    let param = &fn_params[0];
                     let path_param = &path_params[0];
+
+                    // 生成临时变量名用于接收 Axum 提取的 String
+                    let param_str_name = syn::Ident::new(
+                        &format!("{}_str", param.name),
+                        param.name.span()
+                    );
+
+                    // 生成类型转换代码
+                    let param_conversion = generate_param_conversion(param, &param_str_name);
+                    let param_name = &param.name;
 
                     if let Some(pattern) = &path_param.pattern {
                         // 带正则验证的参数
@@ -72,12 +82,12 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                 ::chimera_web::prelude::axum::routing::#http_method(|
                                     ::chimera_web::prelude::axum::Extension(context):
                                         ::chimera_web::prelude::axum::Extension<::std::sync::Arc<::chimera_core::ApplicationContext>>,
-                                    ::chimera_web::prelude::axum::extract::Path(#param_name):
+                                    ::chimera_web::prelude::axum::extract::Path(#param_str_name):
                                         ::chimera_web::prelude::axum::extract::Path<String>,
                                 | async move {
                                     // 验证参数
                                     let re = ::regex::Regex::new(#pattern).unwrap();
-                                    if !re.is_match(&#param_name) {
+                                    if !re.is_match(&#param_str_name) {
                                         // 验证失败，返回 404
                                         use ::chimera_web::prelude::IntoResponse;
                                         return (
@@ -85,6 +95,9 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                             "Not Found"
                                         ).into_response();
                                     }
+
+                                    // 类型转换
+                                    #param_conversion
 
                                     // 从ApplicationContext获取controller bean
                                     match context.get_bean_by_type::<#self_ty>().await {
@@ -113,9 +126,12 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                 ::chimera_web::prelude::axum::routing::#http_method(|
                                     ::chimera_web::prelude::axum::Extension(context):
                                         ::chimera_web::prelude::axum::Extension<::std::sync::Arc<::chimera_core::ApplicationContext>>,
-                                    ::chimera_web::prelude::axum::extract::Path(#param_name):
+                                    ::chimera_web::prelude::axum::extract::Path(#param_str_name):
                                         ::chimera_web::prelude::axum::extract::Path<String>,
                                 | async move {
+                                    // 类型转换
+                                    #param_conversion
+
                                     // 从ApplicationContext获取controller bean
                                     match context.get_bean_by_type::<#self_ty>().await {
                                         Ok(controller) => {
@@ -136,9 +152,25 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 } else if !path_params.is_empty() && !fn_params.is_empty() {
                     // 多个路径参数的情况
-                    let param_names = &fn_params[..path_params.len().min(fn_params.len())];
-                    let param_tuple = quote! { (#(#param_names),*) };
-                    let param_types: Vec<_> = param_names.iter().map(|_| quote! { String }).collect();
+                    let params = &fn_params[..path_params.len().min(fn_params.len())];
+
+                    // 生成临时变量名（用于接收 Axum 提取的 String）
+                    let param_str_names: Vec<_> = params.iter()
+                        .map(|p| syn::Ident::new(&format!("{}_str", p.name), p.name.span()))
+                        .collect();
+
+                    // 生成类型转换代码
+                    let param_conversions: Vec<_> = params.iter()
+                        .zip(&param_str_names)
+                        .map(|(param, str_name)| generate_param_conversion(param, str_name))
+                        .collect();
+
+                    // 生成最终的参数名列表
+                    let param_names: Vec<_> = params.iter().map(|p| &p.name).collect();
+
+                    let param_tuple = quote! { (#(#param_str_names),*) };
+                    let param_types: Vec<_> = param_str_names.iter().map(|_| quote! { String }).collect();
+
                     quote! {
                         // 拼接完整路径: base_path + method_path
                         let full_path = format!("{}{}", #self_ty::__base_path(), #path);
@@ -150,6 +182,9 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                 ::chimera_web::prelude::axum::extract::Path(#param_tuple):
                                     ::chimera_web::prelude::axum::extract::Path<(#(#param_types),*)>,
                             | async move {
+                                // 类型转换
+                                #(#param_conversions)*
+
                                 // 从ApplicationContext获取controller bean
                                 match context.get_bean_by_type::<#self_ty>().await {
                                     Ok(controller) => {
@@ -253,6 +288,13 @@ struct PathParam {
     pattern: Option<String>,  // 可选的正则表达式
 }
 
+/// 函数参数信息
+#[derive(Debug, Clone)]
+struct FnParam {
+    name: syn::Ident,
+    ty: syn::Type,
+}
+
 /// 提取方法的路径参数
 ///
 /// 支持以下语法：
@@ -286,14 +328,17 @@ fn extract_path_params_from_path(path: &str) -> Vec<PathParam> {
 }
 
 /// 提取方法的函数参数名（跳过 &self）
-fn extract_fn_params(method: &ImplItemFn) -> Vec<syn::Ident> {
+fn extract_fn_params(method: &ImplItemFn) -> Vec<FnParam> {
     let mut params = Vec::new();
 
     for arg in &method.sig.inputs {
         if let FnArg::Typed(pat_type) = arg {
-            // 提取参数名
+            // 提取参数名和类型
             if let Pat::Ident(pat_ident) = &*pat_type.pat {
-                params.push(pat_ident.ident.clone());
+                params.push(FnParam {
+                    name: pat_ident.ident.clone(),
+                    ty: (*pat_type.ty).clone(),
+                });
             }
         }
     }
@@ -317,4 +362,46 @@ fn convert_path_to_axum(path: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
+}
+
+/// 检查类型是否为 String
+fn is_string_type(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            return segment.ident == "String";
+        }
+    }
+    false
+}
+
+/// 生成参数转换代码
+///
+/// 如果参数类型是 String，直接使用；否则生成 parse 代码
+fn generate_param_conversion(
+    param: &FnParam,
+    source_name: &syn::Ident,
+) -> proc_macro2::TokenStream {
+    let param_name = &param.name;
+    let param_type = &param.ty;
+
+    if is_string_type(param_type) {
+        // String 类型，直接使用
+        quote! {
+            let #param_name = #source_name;
+        }
+    } else {
+        // 其他类型，需要 parse
+        quote! {
+            let #param_name = match #source_name.parse::<#param_type>() {
+                Ok(val) => val,
+                Err(_) => {
+                    use ::chimera_web::prelude::IntoResponse;
+                    return (
+                        ::chimera_web::prelude::axum::http::StatusCode::BAD_REQUEST,
+                        "Invalid parameter type"
+                    ).into_response();
+                }
+            };
+        }
+    }
 }

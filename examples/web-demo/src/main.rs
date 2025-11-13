@@ -102,21 +102,21 @@ impl ApiController {
         }
     }
 
-    // 带正则验证的路径参数 - 只接受数字ID（简化版）
-    #[get_mapping("/test/:num<[0-9]+>")]
-    async fn test_regex(&self, num: String) -> impl IntoResponse {
+    // 路径参数
+    #[get_mapping("/test/:id")]
+    async fn test_path_param(&self, id: u32) -> impl IntoResponse {
         ResponseEntity::ok(serde_json::json!({
-            "message": "Regex matched!",
-            "number": num
+            "message": "test path param",
+            "number": id,
+            "doubled": id * 2
         }))
     }
 
     // 带正则验证的路径参数 - 只接受数字ID
     #[get_mapping("/users/:id<^\\d+$>/profile")]
-    async fn get_user_profile(&self, id: String) -> impl IntoResponse {
-        // 如果 id 不是数字，框架会自动返回 404
-        let user_id = id.parse::<u32>().unwrap(); // 这里可以安全 unwrap，因为正则已验证
-        match self.user_service.get_user_by_id(user_id) {
+    async fn get_user_profile(&self, id: u32) -> impl IntoResponse {
+        // id 现在直接是 u32 类型，框架已经自动完成了解析和验证
+        match self.user_service.get_user_by_id(id) {
             Some(user) => ResponseEntity::ok(serde_json::json!({
                 "profile": {
                     "user": user,
