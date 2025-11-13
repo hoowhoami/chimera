@@ -429,51 +429,6 @@ async fn main() -> ApplicationResult<()> {
         println!();
     } // 释放所有bean引用
 
-    // 测试核心组件是否可以按类型注入
-    println!("\n🔍 Testing Core Component Type Injection:");
-
-    // 测试 ApplicationContext
-    match context.get_bean_by_type::<ApplicationContext>().await {
-        Ok(_) => println!("✅ ApplicationContext: Successfully injected by type"),
-        Err(e) => println!("❌ ApplicationContext: Failed to inject by type - {}", e),
-    }
-
-    // 测试 Environment
-    match context.get_bean_by_type::<Environment>().await {
-        Ok(_) => println!("✅ Environment: Successfully injected by type"),
-        Err(e) => println!("❌ Environment: Failed to inject by type - {}", e),
-    }
-
-    // 测试 AsyncEventPublisher
-    match context.get_bean_by_type::<AsyncEventPublisher>().await {
-        Ok(_) => println!("✅ AsyncEventPublisher: Successfully injected by type"),
-        Err(e) => println!("❌ AsyncEventPublisher: Failed to inject by type - {}", e),
-    }
-
-    // 测试 Arc 包装的类型
-    println!("\n🔍 Testing Arc<T> Types:");
-
-    match context.get_bean_by_type::<Arc<ApplicationContext>>().await {
-        Ok(_) => println!("✅ Arc<ApplicationContext>: Successfully injected by type"),
-        Err(e) => println!(
-            "❌ Arc<ApplicationContext>: Failed to inject by type - {}",
-            e
-        ),
-    }
-
-    match context.get_bean_by_type::<Arc<Environment>>().await {
-        Ok(_) => println!("✅ Arc<Environment>: Successfully injected by type"),
-        Err(e) => println!("❌ Arc<Environment>: Failed to inject by type - {}", e),
-    }
-
-    match context.get_bean_by_type::<Arc<AsyncEventPublisher>>().await {
-        Ok(_) => println!("✅ Arc<AsyncEventPublisher>: Successfully injected by type"),
-        Err(e) => println!(
-            "❌ Arc<AsyncEventPublisher>: Failed to inject by type - {}",
-            e
-        ),
-    }
-
     context.shutdown().await?;
 
     println!("✅ Demo completed successfully");

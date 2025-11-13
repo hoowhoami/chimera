@@ -406,10 +406,26 @@ fn generate_core_component_injection(
 }
 
 /// 检查类型是否为核心组件
-/// 直接使用 chimera_core 中的统一检查函数
 fn is_core_component_type_id(inner_type: &syn::Type) -> bool {
     let type_tokens = quote! { #inner_type }.to_string();
 
-    // 直接使用 chimera_core 中定义的检查函数，避免重复定义
-    chimera_core::constants::is_core_component_type_name(&type_tokens)
+    // 核心组件类型列表
+    // 注意：添加新的核心组件时需要在此处同步更新
+    const CORE_COMPONENT_TYPES: &[&str] = &[
+        "ApplicationContext",
+        "chimera_core :: ApplicationContext",
+        "chimera_core :: container :: ApplicationContext",
+        "Environment",
+        "chimera_core :: Environment",
+        "chimera_core :: config :: Environment",
+        "AsyncEventPublisher",
+        "chimera_core :: AsyncEventPublisher",
+        "chimera_core :: event :: AsyncEventPublisher",
+    ];
+
+    // 检查是否匹配核心组件类型
+    CORE_COMPONENT_TYPES.contains(&type_tokens.as_str())
+        || type_tokens.contains("ApplicationContext")
+        || type_tokens.contains("Environment")
+        || type_tokens.contains("AsyncEventPublisher")
 }
