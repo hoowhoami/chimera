@@ -262,6 +262,74 @@ impl UserService {
     }
 }
 
+// ==================== 可选依赖演示 ====================
+
+// 一个可选的服务，可能存在也可能不存在
+// #[derive(Component, Debug, Clone)]
+// #[bean("metricsService")]
+struct MetricsService {}
+
+impl MetricsService {
+    fn track(&self, metric: &str, value: i64) {
+        println!("📊 Metrics: {} = {}", metric, value);
+    }
+}
+
+// 使用可选依赖的服务
+#[derive(Component, Clone)]
+#[bean("orderService")]
+struct OrderService {
+    #[autowired]
+    database: Arc<DatabaseService>,
+
+    // 可选依赖：如果 MetricsService 存在就使用，不存在也不影响服务运行
+    #[autowired]
+    metrics: Option<Arc<MetricsService>>,
+}
+
+impl OrderService {
+    fn create_order(&self, order_id: &str, amount: i64) -> ApplicationResult<()> {
+        println!("📦 Creating order: {} (amount: {})", order_id, amount);
+
+        // 保存到数据库
+        self.database.save_user(order_id, "order_data")?;
+
+        // 如果有 metrics 服务，就记录指标
+        if let Some(metrics) = &self.metrics {
+            metrics.track("order.created", 1);
+            metrics.track("order.amount", amount);
+            println!("   ✅ Metrics tracked");
+        } else {
+            println!("   ⚠️  Metrics service not available (optional)");
+        }
+
+        Ok(())
+    }
+}
+
+// 测试不存在的可选依赖
+#[derive(Component, Debug, Clone)]
+#[bean("paymentService")]
+struct PaymentService {
+    // 这个服务不存在，用于测试可选依赖为 None 的情况
+    #[autowired("nonExistentService")]
+    optional_service: Option<Arc<CacheService>>,
+}
+
+impl PaymentService {
+    fn process_payment(&self, amount: i64) -> ApplicationResult<()> {
+        println!("💳 Processing payment: {}", amount);
+
+        if let Some(service) = &self.optional_service {
+            println!("   Using optional service: {:?}", service);
+        } else {
+            println!("   ⚠️  Optional service 'nonExistentService' not found (as expected)");
+        }
+
+        Ok(())
+    }
+}
+
 // ==================== 事件监听器 ====================
 
 #[derive(Component, Clone, Debug)]
@@ -423,6 +491,18 @@ async fn main() -> ApplicationResult<()> {
         // 查询用户
         user_service.get_user(&user_id)?;
 
+        println!();
+
+        // 演示可选依赖
+        println!("🔀 Optional Dependency Demo:");
+        let order_service = context.get_bean_by_type::<OrderService>().await?;
+        order_service.create_order("ORDER-001", 9999)?;
+
+        // 测试不存在的可选依赖
+        let payment_service = context.get_bean_by_type::<PaymentService>().await?;
+        payment_service.process_payment(9999)?;
+        println!();
+
         // 等待异步事件处理完成
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
 
@@ -436,6 +516,7 @@ async fn main() -> ApplicationResult<()> {
     println!("  • @ConfigurationProperties - Type-safe configuration");
     println!("  • @Component & @autowired - Dependency injection");
     println!("  • @autowired(\"beanName\") - Named bean injection");
+    println!("  • Option<Arc<T>> - Optional dependencies");
     println!("  • @init & @destroy - Lifecycle management");
     println!("  • @lazy - Lazy initialization");
     println!("  • Event system - Typed & untyped listeners");

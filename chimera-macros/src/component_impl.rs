@@ -64,30 +64,55 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
         let field_name = &field.ident;
         let field_type = &field.ty;
 
+        // 检测是否为可选依赖 Option<Arc<T>>
+        let is_optional = is_option_type(field_type);
+
+        // 如果是 Option<Arc<T>>，提取 Arc<T>；否则直接使用字段类型
+        let arc_type = if is_optional {
+            extract_option_inner_type(field_type).unwrap_or(field_type)
+        } else {
+            field_type
+        };
+
         // 提取Arc<T>中的T类型
-        let inner_type = extract_arc_type(field_type);
+        let inner_type = extract_arc_type(arc_type);
 
         // 检查是否指定了特定的bean名称
         let bean_name = get_autowired_bean_name(&field.attrs);
 
-        if let Some(bean_name) = bean_name {
+        // 生成基础注入代码
+        let base_injection = if let Some(bean_name) = bean_name {
             // 使用集中的核心组件注入逻辑
-            generate_core_component_injection(field_type, &field_name, &bean_name)
+            generate_core_component_injection(arc_type, &field_name, &bean_name, is_optional)
         } else {
             // 检查是否为核心组件类型，即使没有指定bean名称也要特殊处理
             if is_core_component_type_id(&inner_type) {
                 // 是核心组件，使用 CoreComponent trait 的特殊注入方式
                 // CoreComponent::get_from_context 返回 Arc<Self>，正好匹配字段类型
-                quote! {
-                    let #field_name = <#inner_type as chimera_core::CoreComponent>::get_from_context(&context);
+                if is_optional {
+                    quote! {
+                        let #field_name = Some(<#inner_type as chimera_core::CoreComponent>::get_from_context(&context));
+                    }
+                } else {
+                    quote! {
+                        let #field_name = <#inner_type as chimera_core::CoreComponent>::get_from_context(&context);
+                    }
                 }
             } else {
                 // 使用类型注入
-                quote! {
-                    let #field_name = context.get_bean_by_type::<#inner_type>().await?;
+                if is_optional {
+                    quote! {
+                        let #field_name = context.get_bean_by_type::<#inner_type>().await.ok();
+                    }
+                } else {
+                    quote! {
+                        let #field_name = context.get_bean_by_type::<#inner_type>().await?;
+                    }
                 }
             }
-        }
+        };
+
+        base_injection
     });
 
     // 生成value字段注入代码
@@ -205,16 +230,23 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
     let field_names: Vec<_> = all_fields.iter().map(|f| &f.ident).collect();
 
     // 生成依赖列表（从 Arc<T> 提取 T 的类型名，转换为 bean 名称）
-    // 但排除核心组件，因为它们有特殊的注入方式
+    // 但排除核心组件和可选依赖，因为它们有特殊的注入方式
     let dependency_names: Vec<String> = autowired_fields
         .iter()
         .filter_map(|field| {
+            let field_type = &field.ty;
+
+            // 排除可选依赖（Option<Arc<T>>），因为它们不是必需的
+            if is_option_type(field_type) {
+                return None;
+            }
+
             // 检查是否指定了特定的bean名称
             let bean_name = get_autowired_bean_name(&field.attrs);
 
             if let Some(bean_name) = bean_name {
                 // 检查是否为核心组件类型
-                let inner_type = extract_arc_type(&field.ty);
+                let inner_type = extract_arc_type(field_type);
 
                 if is_core_component_type_id(&inner_type) {
                     // 核心组件不包含在依赖列表中
@@ -224,7 +256,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                 }
             } else {
                 // 使用类型注入的情况
-                let inner_type = extract_arc_type(&field.ty);
+                let inner_type = extract_arc_type(field_type);
 
                 // 检查是否为核心组件
                 if is_core_component_type_id(&inner_type) {
@@ -353,6 +385,32 @@ fn extract_arc_type(ty: &Type) -> &Type {
     ty
 }
 
+/// 辅助函数：检测类型是否为Option<T>
+fn is_option_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            return segment.ident == "Option";
+        }
+    }
+    false
+}
+
+/// 辅助函数：从Option<T>类型中提取T
+fn extract_option_inner_type(ty: &Type) -> Option<&Type> {
+    if let Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            if segment.ident == "Option" {
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                    if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
+                        return Some(inner_ty);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// 从 #[autowired] 或 #[autowired("beanName")] 中提取bean名称
 fn get_autowired_bean_name(attrs: &[syn::Attribute]) -> Option<String> {
     for attr in attrs {
@@ -379,6 +437,7 @@ fn generate_core_component_injection(
     type_for_injection: &syn::Type,
     field_name: &Option<syn::Ident>,
     bean_name: &str,
+    is_optional: bool,
 ) -> proc_macro2::TokenStream {
     // 提取内部类型以检查是否为核心组件
     let inner_type = extract_arc_type(type_for_injection);
@@ -387,20 +446,42 @@ fn generate_core_component_injection(
     if is_core_component_type_id(&inner_type) {
         // 是核心组件，使用 CoreComponent trait 的特殊注入方式
         // CoreComponent::get_from_context 返回 Arc<Self>，匹配 Arc<T> 字段类型
-        quote! {
-            let #field_name = <#inner_type as chimera_core::CoreComponent>::get_from_context(&context);
+        if is_optional {
+            quote! {
+                let #field_name = Some(<#inner_type as chimera_core::CoreComponent>::get_from_context(&context));
+            }
+        } else {
+            quote! {
+                let #field_name = <#inner_type as chimera_core::CoreComponent>::get_from_context(&context);
+            }
         }
     } else {
         // 不是核心组件，使用普通的 bean 查找
-        quote! {
-            let #field_name = {
-                let bean_any = context.get_bean(#bean_name).await?;
-                bean_any.downcast::<#type_for_injection>()
-                    .map_err(|_| chimera_core::ContainerError::TypeMismatch {
-                        expected: std::any::type_name::<#type_for_injection>().to_string(),
-                        found: "unknown".to_string(),
-                    })?
-            };
+        // context.get_bean() 返回 Arc<dyn Any>，需要 downcast 成 Arc<T>
+        if is_optional {
+            quote! {
+                let #field_name = {
+                    match context.get_bean(#bean_name).await {
+                        Ok(bean_any) => {
+                            bean_any.downcast::<#inner_type>()
+                                .map(Some)
+                                .unwrap_or(None)
+                        },
+                        Err(_) => None,
+                    }
+                };
+            }
+        } else {
+            quote! {
+                let #field_name = {
+                    let bean_any = context.get_bean(#bean_name).await?;
+                    bean_any.downcast::<#inner_type>()
+                        .map_err(|_| chimera_core::ContainerError::TypeMismatch {
+                            expected: std::any::type_name::<#inner_type>().to_string(),
+                            found: "unknown".to_string(),
+                        })?
+                };
+            }
         }
     }
 }
