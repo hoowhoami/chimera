@@ -23,7 +23,7 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
             if let Some((http_method, path)) = extract_route_info(method) {
                 let method_name = &method.sig.ident;
 
-                // 提取所有参数（跳过 &self）
+                // 提取所有方法参数（跳过 &self）
                 let params = extract_method_params(method);
 
                 // 生成路由处理函数

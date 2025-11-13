@@ -3,7 +3,7 @@ use chimera_core_macros::{Component, ConfigurationProperties};
 use chimera_web_macros::{Controller, controller, get_mapping, post_mapping, put_mapping, request_mapping};
 use chimera_web::prelude::*;
 // 明确导入提取器
-use chimera_web::extractors::{Autowired, PathVariable, RequestBody, RequestParam};
+use chimera_web::extractors::{Autowired, PathVariable, RequestBody, RequestParam, FormData};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -43,6 +43,20 @@ struct SearchQuery {
     email: Option<String>,
     page: Option<u32>,
     size: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LoginForm {
+    username: String,
+    password: String,
+    remember_me: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CommentForm {
+    author: String,
+    content: String,
+    rating: Option<u32>,
 }
 
 // ==================== 服务层 ====================
@@ -239,6 +253,46 @@ impl ApiController {
             "note": "同时使用了 PathVariable, RequestParam, RequestBody 三种提取器"
         }))
     }
+
+    // ========== 使用 FormData 提取器 ==========
+
+    /// POST /api/login
+    /// Content-Type: application/x-www-form-urlencoded
+    /// Body: username=alice&password=secret&remember_me=true
+    ///
+    /// 演示使用 FormData 提取表单数据
+    #[post_mapping("/login")]
+    async fn login(&self, FormData(form): FormData<LoginForm>) -> impl IntoResponse {
+        ResponseEntity::ok(serde_json::json!({
+            "message": "登录成功",
+            "username": form.username,
+            "remember_me": form.remember_me.unwrap_or(false),
+            "note": "使用 FormData 提取器处理表单提交"
+        }))
+    }
+
+    /// POST /api/users/:id/comments
+    /// Content-Type: application/x-www-form-urlencoded
+    /// Body: author=John&content=Great!&rating=5
+    ///
+    /// 组合使用 PathVariable 和 FormData
+    #[post_mapping("/users/:id/comments")]
+    async fn add_comment(
+        &self,
+        PathVariable(user_id): PathVariable<u32>,
+        FormData(comment): FormData<CommentForm>,
+    ) -> impl IntoResponse {
+        ResponseEntity::ok(serde_json::json!({
+            "message": "评论添加成功",
+            "user_id": user_id,
+            "comment": {
+                "author": comment.author,
+                "content": comment.content,
+                "rating": comment.rating
+            },
+            "note": "组合使用 PathVariable 和 FormData 提取器"
+        }))
+    }
 }
 
 // ==================== 文档控制器 ====================
@@ -281,8 +335,9 @@ impl DemoController {
                 },
                 "path_variable": {
                     "name": "PathVariable<T>",
-                    "description": "从路径参数提取（类似 @PathVariable）",
+                    "description": "从路径参数提取（类似 @PathVariable），支持正则验证",
                     "example": "PathVariable(id): PathVariable<u32>",
+                    "validation": "path.validate(r\"^[a-zA-Z0-9_]+$\")",
                     "spring_boot": "@PathVariable Long id"
                 },
                 "request_param": {
@@ -290,6 +345,12 @@ impl DemoController {
                     "description": "从 query 参数反序列化（类似 @RequestParam）",
                     "example": "RequestParam(query): RequestParam<SearchQuery>",
                     "spring_boot": "@RequestParam String name"
+                },
+                "form_data": {
+                    "name": "FormData<T>",
+                    "description": "从表单数据反序列化（支持 application/x-www-form-urlencoded 和 multipart/form-data）",
+                    "example": "FormData(form): FormData<LoginForm>",
+                    "spring_boot": "@ModelAttribute LoginForm form"
                 }
             },
 
@@ -381,6 +442,10 @@ async fn main() -> ApplicationResult<()> {
     println!("  PUT    /api/users/:id         - 更新用户（PathVariable + RequestBody）");
     println!("  GET    /api/users/search      - 搜索用户（RequestParam）");
     println!("  POST   /api/users/:id/actions - 复杂操作（三种提取器组合）\n");
+
+    println!("  【FormData 示例】");
+    println!("  POST   /api/login             - 登录（form-data）");
+    println!("  POST   /api/users/:id/comments - 添加评论（PathVariable + FormData）\n");
 
     println!("  【Autowired 示例】");
     println!("  GET    /api/demo/autowired    - 演示 Autowired 提取器\n");

@@ -11,7 +11,6 @@ use axum::{
 };
 use chimera_core::prelude::*;
 use std::sync::Arc;
-use regex::Regex;
 use serde::de::DeserializeOwned;
 
 /// Bean 提取器 - 从应用上下文中提取 Bean
@@ -138,55 +137,64 @@ where
     }
 }
 
-/// 带正则验证的路径参数提取器
+/// PathVariable 提取器 - 类似 Spring Boot 的 @PathVariable
 ///
-/// 如果参数不匹配正则，返回 404（路由不存在）
-pub struct ValidatedPath<T> {
-    pub inner: T,
-}
+/// 自动从路径参数中提取值（这是对 Axum Path 的语义化封装）
+///
+/// 用法示例：
+/// ```ignore
+/// #[get_mapping("/users/{id}")]
+/// async fn get_user(&self, PathVariable(id): PathVariable<u32>) -> impl IntoResponse {
+///     ResponseEntity::ok(id)
+/// }
+/// ```
+pub struct PathVariable<T>(pub T);
 
-impl<T> ValidatedPath<T> {
-    /// 验证单个字符串参数
-    pub fn validate_single(value: String, pattern: &str) -> Result<String, PathValidationError> {
-        let re = Regex::new(pattern)
-            .map_err(|_| PathValidationError::InvalidPattern)?;
+impl<T> PathVariable<T> {
+    /// 获取内部值
+    pub fn into_inner(self) -> T {
+        self.0
+    }
 
-        if re.is_match(&value) {
-            Ok(value)
-        } else {
-            Err(PathValidationError::ValidationFailed)
-        }
+    /// 获取内部值的引用
+    pub fn as_ref(&self) -> &T {
+        &self.0
     }
 }
 
 #[async_trait]
-impl<S> FromRequestParts<S> for ValidatedPath<String>
+impl<S, T> FromRequestParts<S> for PathVariable<T>
 where
+    T: DeserializeOwned + Send,
     S: Send + Sync,
 {
-    type Rejection = PathValidationError;
+    type Rejection = PathVariableError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let Path(value): Path<String> = Path::from_request_parts(parts, state)
+        let Path(value) = Path::<T>::from_request_parts(parts, state)
             .await
-            .map_err(|_| PathValidationError::ExtractionFailed)?;
+            .map_err(|e| PathVariableError::ParseError(e.to_string()))?;
 
-        Ok(ValidatedPath { inner: value })
+        Ok(PathVariable(value))
     }
 }
 
-/// 路径验证错误
+/// PathVariable 提取错误
 #[derive(Debug)]
-pub enum PathValidationError {
-    InvalidPattern,
-    ValidationFailed,
-    ExtractionFailed,
+pub enum PathVariableError {
+    /// 类型解析错误 - 返回 400
+    ParseError(String),
 }
 
-impl IntoResponse for PathValidationError {
+impl IntoResponse for PathVariableError {
     fn into_response(self) -> Response {
-        // 验证失败返回 404，表示路由不存在
-        (StatusCode::NOT_FOUND, "Not Found").into_response()
+        match self {
+            PathVariableError::ParseError(msg) => {
+                // 类型转换失败 - 参数格式错误，返回 400
+                (StatusCode::BAD_REQUEST, format!("Invalid path parameter: {}", msg))
+                    .into_response()
+            }
+        }
     }
 }
 
@@ -286,48 +294,54 @@ impl IntoResponse for RequestParamError {
     }
 }
 
-/// PathVariable 提取器 - 类似 Spring Boot 的 @PathVariable
+/// FormData 提取器 - 类似 Spring Boot 的 @RequestParam 处理表单
 ///
-/// 自动从路径参数中提取值（这是对 Axum Path 的语义化封装）
+/// 自动从 application/x-www-form-urlencoded 或 multipart/form-data 请求体中提取数据
 ///
 /// 用法示例：
 /// ```ignore
-/// #[get_mapping("/users/:id")]
-/// async fn get_user(&self, PathVariable(id): PathVariable<u32>) -> impl IntoResponse {
-///     // id 已经从路径参数提取并解析
-///     ResponseEntity::ok(user)
+/// #[derive(Deserialize)]
+/// struct LoginForm {
+///     username: String,
+///     password: String,
+/// }
+///
+/// #[post_mapping("/login")]
+/// async fn login(&self, FormData(form): FormData<LoginForm>) -> impl IntoResponse {
+///     // form 已经从表单数据反序列化
+///     ResponseEntity::ok(form)
 /// }
 /// ```
-pub struct PathVariable<T>(pub T);
+pub struct FormData<T>(pub T);
 
 #[async_trait]
-impl<S, T> FromRequestParts<S> for PathVariable<T>
+impl<S, T> FromRequest<S> for FormData<T>
 where
-    T: DeserializeOwned + Send,
+    T: DeserializeOwned,
     S: Send + Sync,
 {
-    type Rejection = PathVariableError;
+    type Rejection = FormDataError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let Path(value) = Path::<T>::from_request_parts(parts, state)
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let axum::extract::Form(value) = axum::extract::Form::<T>::from_request(req, state)
             .await
-            .map_err(|e| PathVariableError::ParseError(e.to_string()))?;
+            .map_err(|e| FormDataError::ParseError(e.to_string()))?;
 
-        Ok(PathVariable(value))
+        Ok(FormData(value))
     }
 }
 
-/// PathVariable 提取错误
+/// FormData 提取错误
 #[derive(Debug)]
-pub enum PathVariableError {
+pub enum FormDataError {
     ParseError(String),
 }
 
-impl IntoResponse for PathVariableError {
+impl IntoResponse for FormDataError {
     fn into_response(self) -> Response {
         match self {
-            PathVariableError::ParseError(msg) => {
-                (StatusCode::BAD_REQUEST, format!("Invalid path parameter: {}", msg))
+            FormDataError::ParseError(msg) => {
+                (StatusCode::BAD_REQUEST, format!("Invalid form data: {}", msg))
                     .into_response()
             }
         }
