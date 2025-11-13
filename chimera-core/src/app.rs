@@ -3,8 +3,51 @@ use crate::config::{TomlPropertySource, EnvironmentPropertySource};
 use crate::event::ApplicationStartedEvent;
 use crate::logging::LoggingConfig;
 use crate::error::ContainerResult;
+use crate::plugin::{PluginRegistry, load_plugins};
 use std::sync::Arc;
 use std::path::Path;
+
+/// 正在运行的应用
+///
+/// 包装 ApplicationContext 并提供额外的生命周期管理方法
+pub struct RunningApplication {
+    context: Arc<ApplicationContext>,
+}
+
+impl RunningApplication {
+    /// 获取 ApplicationContext 引用
+    pub fn context(&self) -> &Arc<ApplicationContext> {
+        &self.context
+    }
+
+    /// 转换为 ApplicationContext（消费 self）
+    pub fn into_context(self) -> Arc<ApplicationContext> {
+        self.context
+    }
+
+    /// 等待应用关闭
+    ///
+    /// 此方法会阻塞当前线程，直到接收到关闭信号
+    pub async fn wait_for_shutdown(self) -> ApplicationResult<()> {
+        // 阻塞直到程序被信号中断
+        let () = std::future::pending().await;
+        Ok(())
+    }
+
+    /// 手动触发关闭
+    pub async fn shutdown(self) -> ApplicationResult<()> {
+        self.context.shutdown().await.map_err(|e| e.into())
+    }
+}
+
+// 实现 Deref 以便可以直接调用 ApplicationContext 的方法
+impl std::ops::Deref for RunningApplication {
+    type Target = Arc<ApplicationContext>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.context
+    }
+}
 
 /// Chimera 应用程序
 ///
@@ -33,6 +76,9 @@ pub struct ChimeraApplication {
 
     /// 自定义 shutdown hooks
     shutdown_hooks: Vec<Box<dyn Fn() -> ContainerResult<()> + Send + Sync>>,
+
+    /// 插件注册表
+    plugin_registry: PluginRegistry,
 }
 
 impl ChimeraApplication {
@@ -47,6 +93,7 @@ impl ChimeraApplication {
             logging_config: None,
             initializers: Vec::new(),
             shutdown_hooks: Vec::new(),
+            plugin_registry: load_plugins(), // 自动加载所有插件
         }
     }
 
@@ -109,7 +156,7 @@ impl ChimeraApplication {
     }
 
     /// 运行应用
-    pub async fn run(self) -> ApplicationResult<Arc<ApplicationContext>> {
+    pub async fn run(self) -> ApplicationResult<RunningApplication> {
         // 初始化日志系统
         let logging_config = self.logging_config.clone().unwrap_or_else(LoggingConfig::from_env);
         logging_config.init()?;
@@ -170,6 +217,10 @@ impl ChimeraApplication {
             initializer(&context)?;
         }
 
+        // 执行插件配置阶段
+        tracing::info!("Configuring plugins");
+        self.plugin_registry.configure_all(&context)?;
+
         // 自动扫描并绑定 ConfigurationProperties
         tracing::info!("Scanning for @ConfigurationProperties annotated beans");
         context.scan_configuration_properties().await?;
@@ -209,14 +260,26 @@ impl ChimeraApplication {
             context.register_shutdown_hook(hook).await;
         }
 
+        // 执行插件启动阶段
+        tracing::info!("Starting plugins");
+        self.plugin_registry.startup_all(&context).await?;
+
         // 设置优雅停机信号处理（Ctrl+C）
         let context_for_signal = Arc::clone(&context);
+        let plugin_registry_for_signal = self.plugin_registry;
         tokio::spawn(async move {
             match tokio::signal::ctrl_c().await {
                 Ok(()) => {
                     tracing::info!("Received shutdown signal (Ctrl+C), initiating graceful shutdown");
+
+                    // 先关闭插件
+                    if let Err(e) = plugin_registry_for_signal.shutdown_all(&context_for_signal).await {
+                        tracing::error!("Error during plugin shutdown: {}", e);
+                    }
+
+                    // 再关闭应用上下文
                     if let Err(e) = context_for_signal.shutdown().await {
-                        tracing::error!("Error during shutdown: {}", e);
+                        tracing::error!("Error during context shutdown: {}", e);
                         std::process::exit(1);
                     }
                     std::process::exit(0);
@@ -228,7 +291,7 @@ impl ChimeraApplication {
         });
         tracing::info!("Graceful shutdown hook registered (Ctrl+C to shutdown)");
 
-        Ok(context)
+        Ok(RunningApplication { context })
     }
 
     /// 加载配置文件
@@ -300,7 +363,7 @@ impl ChimeraApplication {
     }
 
     /// 便捷方法：使用默认配置运行
-    pub async fn run_with_defaults(name: impl Into<String>) -> ApplicationResult<Arc<ApplicationContext>> {
+    pub async fn run_with_defaults(name: impl Into<String>) -> ApplicationResult<RunningApplication> {
         Self::new(name).run().await
     }
 

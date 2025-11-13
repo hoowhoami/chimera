@@ -16,11 +16,12 @@ pub mod error;
 pub mod event;
 pub mod lifecycle;
 pub mod logging;
+pub mod plugin;
 pub mod scope;
 pub mod utils;
 
 // 重新导出常用类型
-pub use app::ChimeraApplication;
+pub use app::{ChimeraApplication, RunningApplication};
 pub use bean::{Bean, BeanDefinition, BeanFactory};
 pub use component::Component;
 pub use component::{ComponentRegistry, ConfigurationPropertiesRegistry, EventListenerRegistry};
@@ -41,12 +42,16 @@ pub use lifecycle::Lifecycle;
 pub use logging::{LogFormat, LogLevel, LoggingConfig};
 pub use scope::Scope;
 
-// 导出 async_trait，供宏使用
+// 导出 async_trait 和 inventory，供宏使用
 pub use async_trait;
+pub use inventory;
+
+// 导出插件相关
+pub use plugin::{ApplicationPlugin, PluginRegistry, PluginSubmission, load_plugins};
 
 /// Prelude 模块，包含常用的 traits 和类型
 pub mod prelude {
-    pub use crate::app::ChimeraApplication;
+    pub use crate::app::{ChimeraApplication, RunningApplication};
     pub use crate::bean::{Bean, BeanDefinition, BeanFactory};
     pub use crate::component::Component;
     pub use crate::config::{
@@ -61,6 +66,7 @@ pub mod prelude {
     };
     pub use crate::lifecycle::Lifecycle;
     pub use crate::logging::{LogFormat, LogLevel, LoggingConfig};
+    pub use crate::plugin::{ApplicationPlugin, PluginRegistry, load_plugins};
     pub use crate::scope::Scope;
     pub use crate::utils;
 }

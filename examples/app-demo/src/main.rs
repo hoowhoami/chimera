@@ -1,6 +1,6 @@
 use chimera_core::async_trait;
 use chimera_core::prelude::*;
-use chimera_macros::{Component, ConfigurationProperties};
+use chimera_core_macros::{Component, ConfigurationProperties};
 use std::sync::Arc;
 use std::time::SystemTime;
 

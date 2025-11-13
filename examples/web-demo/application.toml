@@ -1,0 +1,11 @@
+[app]
+name = "ChimeraWeb"
+version = "1.0.0"
+
+[server]
+host = "127.0.0.1"
+port = 8080
+workers = 4
+request-timeout = 30
+enable-cors = false
+enable-request-logging = true

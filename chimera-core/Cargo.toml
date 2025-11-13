@@ -20,4 +20,4 @@ async-trait = "0.1"
 futures = "0.3"
 
 [dev-dependencies]
-chimera-macros = { path = "../chimera-macros" }
+chimera-core-macros = { path = "../chimera-core-macros" }

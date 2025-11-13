@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 chimera-core = { path = "../../chimera-core" }
-chimera-macros = { path = "../../chimera-macros" }
+chimera-core-macros = { path = "../../chimera-core-macros" }
 anyhow = { workspace = true}
 inventory = "0.3"
 tokio = { workspace = true }

@@ -1,0 +1,40 @@
+[package]
+name = "chimera-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Chimera 核心
+chimera-core = { workspace = true }
+
+# Web 框架 - Axum
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["trace", "cors", "compression-full"] }
+
+# 异步运行时
+tokio = { workspace = true }
+
+# 序列化
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP
+hyper = "1.0"
+http = "1.0"
+
+# 工具库
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# 日志
+tracing = { workspace = true }
+
+# UUID
+uuid = { version = "1.0", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { workspace = true }

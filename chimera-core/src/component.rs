@@ -45,7 +45,7 @@ inventory::collect!(EventListenerRegistry);
 ///
 /// ```ignore
 /// use chimera_core::prelude::*;
-/// use chimera_macros::Component;
+/// use chimera_core_macros::Component;
 /// use std::sync::Arc;
 ///
 /// #[derive(Component)]
