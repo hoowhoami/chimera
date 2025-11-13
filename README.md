@@ -78,15 +78,6 @@ DEMO_DATABASE_URL=custom cargo run -p app-demo
 DEMO_SERVER_PORT=9000 cargo run -p app-demo
 ```
 
-### 添加依赖
-
-```toml
-[dependencies]
-chimera-core = { path = "chimera-core" }
-chimera-macros = { path = "chimera-macros" }
-inventory = "0.3"  # 自动组件扫描需要
-```
-
 ### 基本使用流程
 
 1. **定义配置** - 使用 `@ConfigurationProperties` 绑定配置
@@ -155,29 +146,6 @@ Bean 是容器管理的对象实例，特点：
 - **惯用 Rust** - 遵循 Rust 最佳实践和编码规范
 - **渐进式** - 支持从简单到复杂的渐进式使用
 
-
-## 运行测试
-
-```bash
-# 运行单元测试
-cargo test -p chimera-core
-
-# 运行综合示例
-cargo run -p app-demo
-
-# 带日志的运行
-RUST_LOG=debug cargo run -p app-demo
-```
-
-## 项目结构
-
-```
-chimera/
-├── chimera-core/       # 核心依赖注入容器
-├── chimera-macros/     # 过程宏实现
-└── examples/           # 示例代码
-    └── app-demo/       # 综合示例
-```
 
 ## 后续规划
 
