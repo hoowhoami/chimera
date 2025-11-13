@@ -72,10 +72,9 @@ pub struct ChimeraWebServer {
     config: Arc<ServerProperties>,
 
     /// 应用上下文
-    #[allow(dead_code)]
     context: Arc<ApplicationContext>,
 
-    /// 路由
+    /// 路由（无state）
     router: Option<Router>,
 }
 
@@ -88,8 +87,7 @@ impl ChimeraWebServer {
             .await
             .map_err(|e| {
                 ApplicationError::Other(format!(
-                    "Failed to get ServerProperties bean: {}. \
-                     Make sure WebAutoConfiguration::configure_server_properties() was called.",
+                    "Failed to get ServerProperties bean: {}.",
                     e
                 ))
             })?;
@@ -110,7 +108,11 @@ impl ChimeraWebServer {
     /// 启动服务器
     pub async fn run(self) -> ApplicationResult<()> {
         let addr = self.config.address();
-        let router = self.router.unwrap_or_else(|| Router::new());
+
+        // 获取路由（不需要添加Extension，已经在plugin中添加）
+        let app = self.router
+            .unwrap_or_else(|| Router::new())
+            .into_make_service();
 
         tracing::info!("🚀 Starting Chimera Web Server on {}", addr);
 
@@ -120,7 +122,7 @@ impl ChimeraWebServer {
 
         tracing::info!("✅ Server listening on http://{}", addr);
 
-        axum::serve(listener, router)
+        axum::serve(listener, app)
             .await
             .map_err(|e| ApplicationError::Other(format!("Server error: {}", e)))?;
 

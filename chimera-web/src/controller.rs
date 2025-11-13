@@ -5,7 +5,7 @@
 use axum::{
     http::{StatusCode, HeaderMap, HeaderName, HeaderValue},
     response::{IntoResponse, Response},
-    Json,
+    Router, Json,
 };
 use serde::Serialize;
 
@@ -97,4 +97,26 @@ where
 
         response
     }
+}
+
+/// 控制器注册信息
+///
+/// 用于自动发现和注册控制器
+pub struct ControllerRegistration {
+    /// 控制器类型名称
+    pub type_name: &'static str,
+
+    /// 基础路径
+    pub base_path: &'static str,
+
+    /// 路由注册函数（接受无state的Router，返回无state的Router）
+    pub register: fn(Router) -> Router,
+}
+
+// 使用 inventory 收集所有控制器
+chimera_core::inventory::collect!(ControllerRegistration);
+
+/// 获取所有注册的控制器
+pub fn get_all_controllers() -> impl Iterator<Item = &'static ControllerRegistration> {
+    chimera_core::inventory::iter::<ControllerRegistration>()
 }

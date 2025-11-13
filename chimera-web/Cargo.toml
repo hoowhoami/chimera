@@ -29,6 +29,7 @@ http = "1.0"
 # 工具库
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+regex = "1.10"
 
 # 日志
 tracing = { workspace = true }

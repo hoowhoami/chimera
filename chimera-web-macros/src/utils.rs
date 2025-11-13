@@ -2,14 +2,14 @@
 
 use syn::{Attribute, Meta};
 
-/// 从属性中提取 request_mapping 的值
+/// 从属性中提取 route 的值
 pub fn extract_request_mapping(attrs: &[Attribute]) -> String {
     attrs
         .iter()
-        .find(|attr| attr.path().is_ident("request_mapping"))
+        .find(|attr| attr.path().is_ident("route"))
         .and_then(|attr| {
             if let Meta::List(meta_list) = &attr.meta {
-                // 解析 #[request_mapping("/path")]
+                // 解析 #[route("/path")]
                 meta_list.tokens.clone().into_iter().next().and_then(|token| {
                     if let proc_macro2::TokenTree::Literal(lit) = token {
                         let lit_str = lit.to_string();

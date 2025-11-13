@@ -7,6 +7,7 @@ edition.workspace = true
 chimera-core = { workspace = true }
 chimera-core-macros = { path = "../../chimera-core-macros" }
 chimera-web = { path = "../../chimera-web" }
+chimera-web-macros = { path = "../../chimera-web-macros" }
 
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -14,3 +15,5 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 inventory = "0.3"
+chrono = "0.4"
+regex = "1.10"

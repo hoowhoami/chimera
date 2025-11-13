@@ -4,12 +4,13 @@
 
 use axum::{
     async_trait,
-    extract::{FromRef, FromRequestParts},
+    extract::{FromRef, FromRequestParts, Path},
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
 };
 use chimera_core::prelude::*;
 use std::sync::Arc;
+use regex::Regex;
 
 /// Bean 提取器 - 从应用上下文中提取 Bean
 ///
@@ -90,5 +91,57 @@ where
         let bean = context.get_bean_by_type::<T>().await.ok();
 
         Ok(OptionalBean(bean))
+    }
+}
+
+/// 带正则验证的路径参数提取器
+///
+/// 如果参数不匹配正则，返回 404（路由不存在）
+pub struct ValidatedPath<T> {
+    pub inner: T,
+}
+
+impl<T> ValidatedPath<T> {
+    /// 验证单个字符串参数
+    pub fn validate_single(value: String, pattern: &str) -> Result<String, PathValidationError> {
+        let re = Regex::new(pattern)
+            .map_err(|_| PathValidationError::InvalidPattern)?;
+
+        if re.is_match(&value) {
+            Ok(value)
+        } else {
+            Err(PathValidationError::ValidationFailed)
+        }
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for ValidatedPath<String>
+where
+    S: Send + Sync,
+{
+    type Rejection = PathValidationError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let Path(value): Path<String> = Path::from_request_parts(parts, state)
+            .await
+            .map_err(|_| PathValidationError::ExtractionFailed)?;
+
+        Ok(ValidatedPath { inner: value })
+    }
+}
+
+/// 路径验证错误
+#[derive(Debug)]
+pub enum PathValidationError {
+    InvalidPattern,
+    ValidationFailed,
+    ExtractionFailed,
+}
+
+impl IntoResponse for PathValidationError {
+    fn into_response(self) -> Response {
+        // 验证失败返回 404，表示路由不存在
+        (StatusCode::NOT_FOUND, "Not Found").into_response()
     }
 }

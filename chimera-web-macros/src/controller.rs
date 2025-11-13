@@ -27,8 +27,8 @@ pub fn derive_controller_impl(input: TokenStream) -> TokenStream {
             ::chimera_web::controller::ControllerRegistration {
                 type_name: stringify!(#name),
                 base_path: #base_path,
-                register: |router, context| {
-                    #name::__register_routes(router, context)
+                register: |router| {
+                    #name::__register_routes(router)
                 },
             }
         }
