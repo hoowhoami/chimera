@@ -103,7 +103,7 @@ where
 ///
 /// 用于自动发现和注册控制器
 pub struct ControllerRegistration {
-    /// 控制器类型名称
+    /// 制器类型名称
     pub type_name: &'static str,
 
     /// 基础路径

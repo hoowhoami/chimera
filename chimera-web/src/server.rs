@@ -66,7 +66,7 @@ impl ServerProperties {
     }
 }
 
-/// Chimera Web 服务器
+///  Chimera Web 服务器
 pub struct ChimeraWebServer {
     /// 服务器配置
     config: Arc<ServerProperties>,
@@ -74,7 +74,7 @@ pub struct ChimeraWebServer {
     /// 应用上下文
     context: Arc<ApplicationContext>,
 
-    /// 路由（无state）
+    /// 路由（无状态）
     router: Option<Router>,
 }
 
@@ -109,7 +109,7 @@ impl ChimeraWebServer {
     pub async fn run(self) -> ApplicationResult<()> {
         let addr = self.config.address();
 
-        // 获取路由（不需要添加Extension，已经在plugin中添加）
+        // 获取路由，如果没有则创建空路由
         let app = self.router
             .unwrap_or_else(|| Router::new())
             .into_make_service();

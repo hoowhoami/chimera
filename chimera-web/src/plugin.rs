@@ -47,18 +47,14 @@ impl ApplicationPlugin for WebPlugin {
 
     /// 启动阶段 - 启动 Web 服务器
     async fn on_startup(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
-        // 创建基础路由器（无state）
+        // 创建基础路由器（无状态）
         let mut router = Router::new();
 
         // 自动注册所有控制器
         let controller_count = crate::controller::get_all_controllers().count();
+
         if controller_count > 0 {
             tracing::info!("🎯 Registering {} controllers...", controller_count);
-
-            // 首先注册所有controller beans的Extension层
-            // 这样在路由处理函数中可以提取它们
-            // TODO: 这需要能够动态获取controller bean并注册为Extension
-            // 当前简化实现：只注册路由，controller通过其他方式访问
 
             for registration in crate::controller::get_all_controllers() {
                 tracing::debug!(
@@ -76,7 +72,7 @@ impl ApplicationPlugin for WebPlugin {
             tracing::info!("ℹ️  No controllers found (this is ok for non-web apps)");
         }
 
-        // 添加ApplicationContext作为Extension
+        // 添加 ApplicationContext 作为 Extension，这样所有提取器都能访问它
         let router = router.layer(axum::Extension(Arc::clone(context)));
 
         // 创建并启动服务器（在后台运行）
