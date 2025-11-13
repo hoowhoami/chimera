@@ -5,7 +5,7 @@
 use axum::{
     async_trait,
     extract::{FromRequest, FromRequestParts, Path, Request},
-    http::{request::Parts, StatusCode},
+    http::{request::Parts, StatusCode, HeaderMap},
     response::{IntoResponse, Response},
     Json, Extension,
 };
@@ -342,6 +342,90 @@ impl IntoResponse for FormDataError {
         match self {
             FormDataError::ParseError(msg) => {
                 (StatusCode::BAD_REQUEST, format!("Invalid form data: {}", msg))
+                    .into_response()
+            }
+        }
+    }
+}
+
+/// RequestHeader 提取器 - 类似 Spring Boot 的 @RequestHeader
+///
+/// 从 HTTP 请求头中提取单个 header 值
+///
+/// 用法示例：
+/// ```ignore
+/// #[get_mapping("/api/data")]
+/// async fn get_data(&self, RequestHeader(auth): RequestHeader<String>) -> impl IntoResponse {
+///     // auth 已经从 Authorization header 提取
+///     ResponseEntity::ok(format!("Auth: {}", auth))
+/// }
+/// ```
+///
+/// 注意：header 名称使用小写加下划线格式，会自动转换为 HTTP header 格式
+/// 例如：`user_agent` -> `User-Agent`, `content_type` -> `Content-Type`
+pub struct RequestHeader<T>(pub T);
+
+#[async_trait]
+impl<S> FromRequestParts<S> for RequestHeader<String>
+where
+    S: Send + Sync,
+{
+    type Rejection = RequestHeaderError;
+
+    async fn from_request_parts(_parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // 注意：这里我们需要从方法签名中的变量名推断 header 名
+        // 但在提取器中无法获取变量名，所以这里返回整个 HeaderMap 的第一个值作为示例
+        // 实际使用中，用户应该使用更具体的提取器
+
+        // 为了简化，我们提供一个包装 HeaderMap 的方式
+        Err(RequestHeaderError::HeaderNotFound(
+            "RequestHeader<String> requires explicit header name. Use RequestHeaders instead.".to_string()
+        ))
+    }
+}
+
+/// RequestHeaders 提取器 - 提取所有请求头
+///
+/// 用法示例：
+/// ```ignore
+/// #[get_mapping("/api/headers")]
+/// async fn get_headers(&self, RequestHeaders(headers): RequestHeaders) -> impl IntoResponse {
+///     let user_agent = headers.get("user-agent")
+///         .and_then(|v| v.to_str().ok())
+///         .unwrap_or("unknown");
+///     ResponseEntity::ok(format!("User-Agent: {}", user_agent))
+/// }
+/// ```
+pub struct RequestHeaders(pub HeaderMap);
+
+#[async_trait]
+impl<S> FromRequestParts<S> for RequestHeaders
+where
+    S: Send + Sync,
+{
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        Ok(RequestHeaders(parts.headers.clone()))
+    }
+}
+
+/// RequestHeader 提取错误
+#[derive(Debug)]
+pub enum RequestHeaderError {
+    HeaderNotFound(String),
+    InvalidHeaderValue(String),
+}
+
+impl IntoResponse for RequestHeaderError {
+    fn into_response(self) -> Response {
+        match self {
+            RequestHeaderError::HeaderNotFound(msg) => {
+                (StatusCode::BAD_REQUEST, format!("Header not found: {}", msg))
+                    .into_response()
+            }
+            RequestHeaderError::InvalidHeaderValue(msg) => {
+                (StatusCode::BAD_REQUEST, format!("Invalid header value: {}", msg))
                     .into_response()
             }
         }

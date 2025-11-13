@@ -3,7 +3,7 @@ use chimera_core_macros::{Component, ConfigurationProperties};
 use chimera_web_macros::{Controller, controller, get_mapping, post_mapping, put_mapping, request_mapping};
 use chimera_web::prelude::*;
 // 明确导入提取器
-use chimera_web::extractors::{Autowired, PathVariable, RequestBody, RequestParam, FormData};
+use chimera_web::extractors::{Autowired, PathVariable, RequestBody, RequestParam, FormData, RequestHeaders};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -293,6 +293,58 @@ impl ApiController {
             "note": "组合使用 PathVariable 和 FormData 提取器"
         }))
     }
+
+    // ========== 使用 RequestHeaders 提取器 ==========
+
+    /// GET /api/headers
+    /// 使用 RequestHeaders 提取所有请求头
+    #[get_mapping("/headers")]
+    async fn get_headers(&self, RequestHeaders(headers): RequestHeaders) -> impl IntoResponse {
+        let user_agent = headers.get("user-agent")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("unknown");
+
+        let content_type = headers.get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("not specified");
+
+        let accept = headers.get("accept")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("*/*");
+
+        ResponseEntity::ok(serde_json::json!({
+            "message": "请求头信息",
+            "user_agent": user_agent,
+            "content_type": content_type,
+            "accept": accept,
+            "total_headers": headers.len(),
+            "note": "使用 RequestHeaders 提取器获取所有请求头"
+        }))
+    }
+
+    /// GET /api/users/:id/metadata
+    /// 组合 PathVariable 和 RequestHeaders
+    #[get_mapping("/users/:id/metadata")]
+    async fn get_user_metadata(
+        &self,
+        PathVariable(id): PathVariable<u32>,
+        RequestHeaders(headers): RequestHeaders,
+    ) -> impl IntoResponse {
+        let authorization = headers.get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("not provided");
+
+        let user_agent = headers.get("user-agent")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("unknown");
+
+        ResponseEntity::ok(serde_json::json!({
+            "user_id": id,
+            "authorization": authorization,
+            "user_agent": user_agent,
+            "note": "组合使用 PathVariable 和 RequestHeaders 提取器"
+        }))
+    }
 }
 
 // ==================== 文档控制器 ====================
@@ -351,6 +403,12 @@ impl DemoController {
                     "description": "从表单数据反序列化（支持 application/x-www-form-urlencoded 和 multipart/form-data）",
                     "example": "FormData(form): FormData<LoginForm>",
                     "spring_boot": "@ModelAttribute LoginForm form"
+                },
+                "request_headers": {
+                    "name": "RequestHeaders",
+                    "description": "提取所有 HTTP 请求头（类似 @RequestHeader）",
+                    "example": "RequestHeaders(headers): RequestHeaders",
+                    "spring_boot": "@RequestHeader HttpHeaders headers"
                 }
             },
 
@@ -449,6 +507,10 @@ async fn main() -> ApplicationResult<()> {
 
     println!("  【Autowired 示例】");
     println!("  GET    /api/demo/autowired    - 演示 Autowired 提取器\n");
+
+    println!("  【RequestHeaders 示例】");
+    println!("  GET    /api/headers           - 获取请求头信息");
+    println!("  GET    /api/users/:id/metadata - 获取用户元数据（PathVariable + RequestHeaders）\n");
 
     println!("  【文档】");
     println!("  GET    /demo/guide            - 完整使用指南\n");
