@@ -2,10 +2,19 @@ use chimera_core::prelude::*;
 use chimera_core_macros::{Component, ConfigurationProperties};
 use chimera_web_macros::{Controller, controller, get_mapping, post_mapping, put_mapping, request_mapping};
 use chimera_web::prelude::*;
+use chimera_web::exception_handler::ApplicationError;
 // 明确导入提取器
 use chimera_web::extractors::{Autowired, PathVariable, RequestBody, RequestParam, FormData, RequestHeaders};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+// 导入我们的异常处理器和拦截器模块
+mod handlers {
+    pub mod exception_handlers;
+}
+mod interceptors {
+    pub mod handler_interceptors;
+}
 
 // ==================== 配置 ====================
 
@@ -345,6 +354,108 @@ impl ApiController {
             "note": "组合使用 PathVariable 和 RequestHeaders 提取器"
         }))
     }
+
+    // ========== 测试异常处理器的端点 ==========
+
+    /// GET /api/test/business-error
+    /// 测试业务异常处理器
+    #[get_mapping("/test/business-error")]
+    async fn test_business_error(&self) -> impl IntoResponse {
+        // 触发业务异常，会被 BusinessExceptionHandler 处理
+        Err::<ResponseEntity<()>, _>(
+            ApplicationError::ValidationError(
+                "用户名必须长度在2-20个字符之间".to_string()
+            )
+        )
+    }
+
+    /// GET /api/test/database-error
+    /// 测试数据库异常处理器
+    #[get_mapping("/test/database-error")]
+    async fn test_database_error(&self) -> impl IntoResponse {
+        // 模拟数据库连接错误，会被 DatabaseExceptionHandler 处理
+        Err::<ResponseEntity<()>, _>(
+            ApplicationError::DatabaseError(
+                "Database connection timeout after 30 seconds".to_string()
+            )
+        )
+    }
+
+    /// GET /api/test/generic-error
+    /// 测试通用错误处理
+    #[get_mapping("/test/generic-error")]
+    async fn test_generic_error(&self) -> impl IntoResponse {
+        // 模拟一个会导致panic的情况
+        panic!("模拟系统panic，用于测试全局异常处理")
+    }
+
+    // ========== 测试拦截器的端点 ==========
+
+    /// GET /api/auth/protected
+    /// 需要认证的端点，会被 AuthInterceptor 拦截
+    #[get_mapping("/auth/protected")]
+    async fn protected_endpoint(&self) -> impl IntoResponse {
+        ResponseEntity::ok(serde_json::json!({
+            "message": "恭喜！您已成功通过身份验证",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "note": "这个端点需要有效的JWT token才能访问"
+        }))
+    }
+
+    /// GET /api/admin/panel
+    /// 需要管理员权限的端点
+    #[get_mapping("/admin/panel")]
+    async fn admin_panel(&self) -> impl IntoResponse {
+        ResponseEntity::ok(serde_json::json!({
+            "message": "欢迎进入管理员面板",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "note": "这个端点需要ADMIN角色才能访问"
+        }))
+    }
+
+    /// POST /api/auth/login
+    /// 登录端点（不需要认证），返回测试用的token
+    #[post_mapping("/auth/login")]
+    async fn auth_login(&self, RequestBody(credentials): RequestBody<serde_json::Value>) -> impl IntoResponse {
+        let username = credentials.get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+
+        let token = if username == "admin" {
+            "admin-token"
+        } else {
+            "valid-token"
+        };
+
+        ResponseEntity::ok(serde_json::json!({
+            "message": "登录成功",
+            "token": token,
+            "username": username,
+            "note": "使用这个token在Authorization头中进行后续请求: 'Bearer <token>'"
+        }))
+    }
+
+    /// GET /api/public/info
+    /// 公开端点，不需要认证
+    #[get_mapping("/public/info")]
+    async fn public_info(&self) -> impl IntoResponse {
+        ResponseEntity::ok(serde_json::json!({
+            "message": "这是一个公开端点，无需认证",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "note": "此端点在AuthInterceptor的排除列表中"
+        }))
+    }
+
+    /// GET /api/test/rate-limit
+    /// 测试限流拦截器的端点
+    #[get_mapping("/test/rate-limit")]
+    async fn test_rate_limit(&self) -> impl IntoResponse {
+        ResponseEntity::ok(serde_json::json!({
+            "message": "限流测试成功",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "note": "连续快速请求此端点以测试限流功能"
+        }))
+    }
 }
 
 // ==================== 文档控制器 ====================
@@ -512,10 +623,25 @@ async fn main() -> ApplicationResult<()> {
     println!("  GET    /api/headers           - 获取请求头信息");
     println!("  GET    /api/users/:id/metadata - 获取用户元数据（PathVariable + RequestHeaders）\n");
 
+    println!("  【异常处理器测试端点】");
+    println!("  GET    /api/test/business-error - 测试业务异常处理器");
+    println!("  GET    /api/test/database-error - 测试数据库异常处理器");
+    println!("  GET    /api/test/generic-error  - 测试通用异常处理\n");
+
+    println!("  【拦截器测试端点】");
+    println!("  POST   /api/auth/login        - 获取测试token");
+    println!("  GET    /api/public/info       - 公开端点（无需认证）");
+    println!("  GET    /api/auth/protected    - 需要认证的端点");
+    println!("  GET    /api/admin/panel       - 需要管理员权限的端点");
+    println!("  GET    /api/test/rate-limit   - 测试限流功能\n");
+
     println!("  【文档】");
     println!("  GET    /demo/guide            - 完整使用指南\n");
 
-    println!("💡 所有路由都已自动注册，无需手动配置！\n");
+    println!("💡 异常处理器和拦截器已自动注册并启用！");
+    println!("🔑 测试认证：POST /api/auth/login 获取token，然后在Authorization头使用 'Bearer <token>'");
+    println!("⚡ 测试限流：快速连续请求 /api/test/rate-limit 端点");
+    println!("💥 测试异常：访问 /api/test/* 端点查看异常处理效果\n");
 
     app.wait_for_shutdown().await?;
 

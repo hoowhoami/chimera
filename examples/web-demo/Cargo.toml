@@ -17,3 +17,5 @@ anyhow = { workspace = true }
 inventory = "0.3"
 chrono = "0.4"
 regex = "1.10"
+axum = "0.7"
+async-trait = "0.1"

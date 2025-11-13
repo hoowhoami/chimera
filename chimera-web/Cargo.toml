@@ -17,6 +17,7 @@ tower-http = { version = "0.5", features = ["trace", "cors", "compression-full"]
 
 # 异步运行时
 tokio = { workspace = true }
+futures-util = "0.3"
 
 # 序列化
 serde = { workspace = true }
@@ -36,6 +37,15 @@ tracing = { workspace = true }
 
 # UUID
 uuid = { version = "1.0", features = ["v4"] }
+
+# 时间处理
+chrono = { version = "0.4", features = ["serde"] }
+
+# 异步trait
+async-trait = "0.1"
+
+# 编译时注册
+inventory = "0.3"
 
 [dev-dependencies]
 tokio = { workspace = true }
