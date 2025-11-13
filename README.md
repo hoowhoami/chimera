@@ -155,18 +155,6 @@ Bean 是容器管理的对象实例，特点：
 - **惯用 Rust** - 遵循 Rust 最佳实践和编码规范
 - **渐进式** - 支持从简单到复杂的渐进式使用
 
-## 与 Spring Boot 对比
-
-| 功能 | Spring Boot | Chimera |
-|------|-------------|---------|
-| 依赖注入 | @Autowired | #[autowired] |
-| 组件扫描 | @Component | #[derive(Component)] |
-| 配置绑定 | @ConfigurationProperties | #[derive(ConfigurationProperties)] |
-| 配置注入 | @Value | #[value] |
-| 生命周期 | @PostConstruct/@PreDestroy | #[init]/#[destroy] |
-| 应用启动 | SpringApplication.run() | ChimeraApplication.run() |
-| 环境配置 | application.properties/yml | application.toml |
-| Profile | @Profile | Profile 支持 |
 
 ## 运行测试
 
