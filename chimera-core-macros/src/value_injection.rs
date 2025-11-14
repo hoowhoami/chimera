@@ -1,10 +1,43 @@
-use syn::{Attribute, Expr, Meta};
+use syn::{Attribute, Expr, Token};
+use syn::parse::{Parse, ParseStream};
 use quote::quote;
 
 /// Value字段信息
 pub(crate) struct ValueFieldInfo {
     pub key: String,
     pub default_value: Option<proc_macro2::TokenStream>,
+}
+
+/// 解析 #[value] 属性的参数
+struct ValueArgs {
+    key: syn::LitStr,
+    default_value: Option<Expr>,
+}
+
+impl Parse for ValueArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        // 解析第一个参数：key（字符串字面量）
+        let key: syn::LitStr = input.parse()?;
+
+        let mut default_value = None;
+
+        // 检查是否有逗号和更多参数
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+
+            // 解析 default = value
+            if input.peek(syn::Ident) {
+                let ident: syn::Ident = input.parse()?;
+                if ident == "default" {
+                    input.parse::<Token![=]>()?;
+                    let expr: Expr = input.parse()?;
+                    default_value = Some(expr);
+                }
+            }
+        }
+
+        Ok(ValueArgs { key, default_value })
+    }
 }
 
 /// 从属性中提取value配置
@@ -15,35 +48,10 @@ pub(crate) struct ValueFieldInfo {
 pub(crate) fn get_value_info(attrs: &[Attribute]) -> Option<ValueFieldInfo> {
     for attr in attrs {
         if attr.path().is_ident("value") {
-            // 解析 #[value("key")] 或 #[value("key", default = "value")]
-            if let Meta::List(meta_list) = &attr.meta {
-                let tokens = &meta_list.tokens;
-                let tokens_str = tokens.to_string();
-
-                // 简单解析：分割逗号
-                let parts: Vec<&str> = tokens_str.split(',').map(|s| s.trim()).collect();
-
-                if parts.is_empty() {
-                    continue;
-                }
-
-                // 第一部分是key（去掉引号）
-                let key = parts[0].trim_matches('"').to_string();
-
-                // 查找default参数
-                let mut default_value = None;
-                for part in &parts[1..] {
-                    if part.contains("default") {
-                        // 解析 default = value
-                        if let Some(eq_pos) = part.find('=') {
-                            let value_str = part[eq_pos + 1..].trim();
-                            // 将字符串解析为TokenStream
-                            if let Ok(expr) = syn::parse_str::<Expr>(value_str) {
-                                default_value = Some(quote! { #expr });
-                            }
-                        }
-                    }
-                }
+            // 使用 syn 的正式解析器来解析属性
+            if let Ok(args) = attr.parse_args::<ValueArgs>() {
+                let key = args.key.value();
+                let default_value = args.default_value.map(|expr| quote! { #expr });
 
                 return Some(ValueFieldInfo { key, default_value });
             }

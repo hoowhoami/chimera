@@ -4,7 +4,6 @@
 
 mod controller;
 mod exception_handler;
-mod handler_interceptor;
 mod route;
 mod utils;
 
@@ -53,32 +52,6 @@ pub fn derive_controller(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(ExceptionHandler)]
 pub fn derive_exception_handler(input: TokenStream) -> TokenStream {
     exception_handler::derive_exception_handler(input)
-}
-
-/// Interceptor 宏
-///
-/// 将结构体标记为处理器拦截器，自动注册到拦截器注册表
-///
-/// # 示例
-///
-/// ```ignore
-/// #[derive(Interceptor, Component)]
-/// #[bean("authInterceptor")]
-/// struct AuthInterceptor {
-///     #[value("security.jwt.secret")]
-///     jwt_secret: String,
-/// }
-///
-/// #[async_trait]
-/// impl HandlerInterceptor for AuthInterceptor {
-///     fn name(&self) -> &str { "AuthInterceptor" }
-///     fn priority(&self) -> i32 { 100 }
-///     // ...
-/// }
-/// ```
-#[proc_macro_derive(Interceptor)]
-pub fn derive_interceptor(input: TokenStream) -> TokenStream {
-    handler_interceptor::derive_handler_interceptor(input)
 }
 
 /// 处理控制器实现块，提取路由方法

@@ -8,12 +8,9 @@ use chimera_web::extractors::{Autowired, PathVariable, RequestBody, RequestParam
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-// 导入我们的异常处理器和拦截器模块
+// 导入我们的异常处理器模块
 mod handlers {
     pub mod exception_handlers;
-}
-mod interceptors {
-    pub mod handler_interceptors;
 }
 
 // ==================== 配置 ====================
@@ -560,11 +557,11 @@ impl DemoController {
             },
 
             "key_features": [
-                "✅ 完全自动化：路由自动注册，无需手动配置",
-                "✅ 类型安全：所有参数都有明确的类型",
-                "✅ 错误处理：提取失败自动返回适当的 HTTP 状态码",
-                "✅ 灵活组合：可以在一个方法中使用多个提取器",
-                "✅ Spring Boot 风格：完全符合 Java 开发者的使用习惯"
+                "完全自动化：路由自动注册，无需手动配置",
+                "类型安全：所有参数都有明确的类型",
+                "错误处理：提取失败自动返回适当的 HTTP 状态码",
+                "灵活组合：可以在一个方法中使用多个提取器",
+                "Spring Boot 风格：完全符合 Java 开发者的使用习惯"
             ]
         }))
     }
@@ -574,76 +571,14 @@ impl DemoController {
 
 #[tokio::main]
 async fn main() -> ApplicationResult<()> {
-    println!("🌐 Chimera Web - Parameter Injection Demo");
-    println!("==========================================\n");
-    println!("✨ 现在可以直接在 controller 方法中使用提取器！\n");
-    println!("核心特性：");
-    println!("  ✓ 自动路由注册 - 无需手动配置");
-    println!("  ✓ Spring Boot 风格 - Autowired, RequestBody, PathVariable, RequestParam");
-    println!("  ✓ 类型安全 - 编译时检查所有参数");
-    println!("  ✓ 灵活组合 - 在一个方法中使用多个提取器\n");
+    // 配置文件会自动从以下位置查找（按优先级）：
+    // 1. config/application.toml
+    // 2. application.toml
+    // 也可以手动指定：.config_file("custom/path/to/config.toml")
 
-    let config_file = if std::path::Path::new("examples/web-demo/application.toml").exists() {
-        "examples/web-demo/application.toml"
-    } else {
-        "application.toml"
-    };
-
-    let app = ChimeraApplication::new("WebDemo")
-        .config_file(config_file)
+    // 一行启动应用并阻塞（类似 Spring Boot 的 SpringApplication.run()）
+    ChimeraApplication::new("WebDemo")
         .env_prefix("WEB_")
-        .run()
-        .await?;
-
-    println!("\n📋 可用的 API 端点：\n");
-    println!("  【基础路由】");
-    println!("  GET    /api/info              - 应用信息");
-    println!("  GET    /api/users             - 用户列表");
-    println!("  *      /api/health            - 健康检查\n");
-
-    println!("  【PathVariable 示例】");
-    println!("  GET    /api/users/:id         - 获取单个用户\n");
-
-    println!("  【RequestBody 示例】");
-    println!("  POST   /api/users/create      - 创建用户\n");
-
-    println!("  【组合示例】");
-    println!("  PUT    /api/users/:id         - 更新用户（PathVariable + RequestBody）");
-    println!("  GET    /api/users/search      - 搜索用户（RequestParam）");
-    println!("  POST   /api/users/:id/actions - 复杂操作（三种提取器组合）\n");
-
-    println!("  【FormData 示例】");
-    println!("  POST   /api/login             - 登录（form-data）");
-    println!("  POST   /api/users/:id/comments - 添加评论（PathVariable + FormData）\n");
-
-    println!("  【Autowired 示例】");
-    println!("  GET    /api/demo/autowired    - 演示 Autowired 提取器\n");
-
-    println!("  【RequestHeaders 示例】");
-    println!("  GET    /api/headers           - 获取请求头信息");
-    println!("  GET    /api/users/:id/metadata - 获取用户元数据（PathVariable + RequestHeaders）\n");
-
-    println!("  【异常处理器测试端点】");
-    println!("  GET    /api/test/business-error - 测试业务异常处理器");
-    println!("  GET    /api/test/database-error - 测试数据库异常处理器");
-    println!("  GET    /api/test/generic-error  - 测试通用异常处理\n");
-
-    println!("  【拦截器测试端点】");
-    println!("  POST   /api/auth/login        - 获取测试token");
-    println!("  GET    /api/public/info       - 公开端点（无需认证）");
-    println!("  GET    /api/auth/protected    - 需要认证的端点");
-    println!("  GET    /api/admin/panel       - 需要管理员权限的端点");
-    println!("  GET    /api/test/rate-limit   - 测试限流功能\n");
-
-    println!("  【文档】");
-    println!("  GET    /demo/guide            - 完整使用指南\n");
-
-    println!("💡 异常处理器和拦截器已自动注册并启用！");
-    println!("🔑 测试认证：POST /api/auth/login 获取token，然后在Authorization头使用 'Bearer <token>'");
-    println!("⚡ 测试限流：快速连续请求 /api/test/rate-limit 端点");
-    println!("💥 测试异常：访问 /api/test/* 端点查看异常处理效果\n");
-
-    app.wait_for_shutdown().await?;
-
-    Ok(())
+        .run_until_shutdown()
+        .await
 }

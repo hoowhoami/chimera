@@ -164,6 +164,25 @@ impl Environment {
         self.get_bool(key).unwrap_or(default)
     }
 
+    /// 获取字符串数组配置
+    /// 支持两种格式:
+    /// 1. TOML数组: key = ["a", "b", "c"]
+    /// 2. 逗号分隔字符串: key = "a, b, c"
+    pub fn get_string_array(&self, key: &str) -> Option<Vec<String>> {
+        match self.get(key)? {
+            ConfigValue::Array(arr) => {
+                Some(arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            }
+            ConfigValue::String(s) => {
+                Some(s.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect())
+            }
+            _ => None,
+        }
+    }
+
     /// 设置激活的 profile
     pub fn set_active_profiles(&self, profiles: Vec<String>) {
         let mut active = self.active_profiles.write().unwrap();

@@ -73,7 +73,7 @@ impl PluginRegistry {
     /// 执行配置阶段
     pub fn configure_all(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
         for plugin in &self.plugins {
-            tracing::info!("⚙️  Configuring plugin: {}", plugin.name());
+            tracing::info!("Configuring plugin: {}", plugin.name());
             plugin.configure(context)?;
         }
         Ok(())
@@ -82,7 +82,7 @@ impl PluginRegistry {
     /// 执行启动阶段
     pub async fn startup_all(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
         for plugin in &self.plugins {
-            tracing::info!("🚀 Starting plugin: {}", plugin.name());
+            tracing::info!("Starting plugin: {}", plugin.name());
             plugin.on_startup(context).await?;
         }
         Ok(())
@@ -92,7 +92,7 @@ impl PluginRegistry {
     pub async fn shutdown_all(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
         // 逆序关闭
         for plugin in self.plugins.iter().rev() {
-            tracing::info!("🛑 Shutting down plugin: {}", plugin.name());
+            tracing::info!("Shutting down plugin: {}", plugin.name());
             if let Err(e) = plugin.on_shutdown(context).await {
                 tracing::error!("Failed to shutdown plugin {}: {}", plugin.name(), e);
             }

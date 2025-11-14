@@ -59,6 +59,16 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
         .copied()
         .collect();
 
+    // 提取没有任何属性的字段（将使用Default::default()初始化）
+    let plain_fields: Vec<_> = all_fields
+        .iter()
+        .filter(|f| {
+            !f.attrs.iter().any(|attr| attr.path().is_ident("autowired"))
+                && !f.attrs.iter().any(|attr| attr.path().is_ident("value"))
+        })
+        .copied()
+        .collect();
+
     // 生成autowired字段注入代码
     let autowired_injections = autowired_fields.iter().map(|field| {
         let field_name = &field.ident;
@@ -130,7 +140,121 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
             if default_value.is_some() {
                 let default = default_value.unwrap();
                 // 有默认值的情况
-                if type_str.contains("String") {
+                if type_str.contains("Vec") {
+                    // Vec类型：支持两种格式
+                    // 1. TOML数组: ["a", "b", "c"]
+                    // 2. 逗号分隔字符串: "a, b, c"
+                    if type_str.contains("String") {
+                        // Vec<String>：使用 get_string_array 支持两种格式
+                        quote! {
+                            let #field_name = context.get_environment()
+                                .get_string_array(#config_key)
+                                .unwrap_or_else(|| {
+                                    #default.to_string()
+                                        .split(',')
+                                        .map(|s| s.trim().to_string())
+                                        .filter(|s| !s.is_empty())
+                                        .collect()
+                                });
+                        }
+                    } else if type_str.contains("i32") || type_str.contains("i64")
+                            || type_str.contains("u32") || type_str.contains("u64") {
+                        // Vec<i32>, Vec<i64>, Vec<u32>, Vec<u64>
+                        // 支持TOML数组和逗号分隔字符串
+                        quote! {
+                            let #field_name: #field_type = match context.get_environment().get(#config_key) {
+                                Some(chimera_core::config::ConfigValue::Array(arr)) => {
+                                    // TOML数组格式: [1, 2, 3]
+                                    arr.iter()
+                                        .filter_map(|v| v.as_i64())
+                                        .map(|v| v as _)
+                                        .collect()
+                                }
+                                Some(chimera_core::config::ConfigValue::String(s)) => {
+                                    // 逗号分隔字符串: "1, 2, 3"
+                                    s.split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
+                                            format!("Failed to parse number in config '{}': {}", #config_key, e)
+                                        )))
+                                        .collect::<Result<#field_type, _>>()?
+                                }
+                                _ => {
+                                    // 使用默认值
+                                    #default.to_string()
+                                        .split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
+                                            format!("Failed to parse number in default value: {}", e)
+                                        )))
+                                        .collect::<Result<#field_type, _>>()?
+                                }
+                            };
+                        }
+                    } else if type_str.contains("f32") || type_str.contains("f64") {
+                        // Vec<f32>, Vec<f64>
+                        quote! {
+                            let #field_name: #field_type = match context.get_environment().get(#config_key) {
+                                Some(chimera_core::config::ConfigValue::Array(arr)) => {
+                                    // TOML数组格式: [1.0, 2.0, 3.0]
+                                    arr.iter()
+                                        .filter_map(|v| v.as_f64())
+                                        .map(|v| v as _)
+                                        .collect()
+                                }
+                                Some(chimera_core::config::ConfigValue::String(s)) => {
+                                    // 逗号分隔字符串: "1.0, 2.0, 3.0"
+                                    s.split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
+                                            format!("Failed to parse float in config '{}': {}", #config_key, e)
+                                        )))
+                                        .collect::<Result<#field_type, _>>()?
+                                }
+                                _ => {
+                                    // 使用默认值
+                                    #default.to_string()
+                                        .split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
+                                            format!("Failed to parse float in default value: {}", e)
+                                        )))
+                                        .collect::<Result<#field_type, _>>()?
+                                }
+                            };
+                        }
+                    } else {
+                        // 其他Vec类型，尝试使用parse
+                        quote! {
+                            let #field_name: #field_type = match context.get_environment().get(#config_key) {
+                                Some(chimera_core::config::ConfigValue::String(s)) => {
+                                    s.split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
+                                            format!("Failed to parse element in config '{}': {}", #config_key, e)
+                                        )))
+                                        .collect::<Result<#field_type, _>>()?
+                                }
+                                _ => {
+                                    // 使用默认值
+                                    #default.to_string()
+                                        .split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
+                                            format!("Failed to parse element in default value: {}", e)
+                                        )))
+                                        .collect::<Result<#field_type, _>>()?
+                                }
+                            };
+                        }
+                    }
+                } else if type_str.contains("String") {
                     quote! {
                         let #field_name = context.get_environment()
                             .get_string(#config_key)
@@ -164,18 +288,103 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                             .get_string(#config_key)
                             .unwrap_or_else(|| #default.to_string())
                             .parse()
-                            .map_err(|e| chimera_core::ContainerError::Custom(
+                            .map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
                                 format!("Failed to parse config '{}': {}", #config_key, e)
                             ))?;
                     }
                 }
             } else {
                 // 没有默认值的情况，配置必须存在
-                if type_str.contains("String") {
+                if type_str.contains("Vec") {
+                    // Vec类型：支持两种格式
+                    if type_str.contains("String") {
+                        // Vec<String>
+                        quote! {
+                            let #field_name = context.get_environment()
+                                .get_string_array(#config_key)
+                                .ok_or_else(|| chimera_core::ContainerError::BeanCreationFailed(
+                                    format!("Required config '{}' not found", #config_key)
+                                ))?;
+                        }
+                    } else if type_str.contains("i32") || type_str.contains("i64")
+                            || type_str.contains("u32") || type_str.contains("u64") {
+                        // Vec<i32>, Vec<i64>, Vec<u32>, Vec<u64>
+                        quote! {
+                            let #field_name: #field_type = match context.get_environment().get(#config_key) {
+                                Some(chimera_core::config::ConfigValue::Array(arr)) => {
+                                    arr.iter()
+                                        .filter_map(|v| v.as_i64())
+                                        .map(|v| v as _)
+                                        .collect()
+                                }
+                                Some(chimera_core::config::ConfigValue::String(s)) => {
+                                    s.split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
+                                            format!("Failed to parse number in config '{}': {}", #config_key, e)
+                                        )))
+                                        .collect::<Result<#field_type, _>>()?
+                                }
+                                _ => {
+                                    return Err(chimera_core::ContainerError::BeanCreationFailed(
+                                        format!("Required config '{}' not found", #config_key)
+                                    ));
+                                }
+                            };
+                        }
+                    } else if type_str.contains("f32") || type_str.contains("f64") {
+                        // Vec<f32>, Vec<f64>
+                        quote! {
+                            let #field_name: #field_type = match context.get_environment().get(#config_key) {
+                                Some(chimera_core::config::ConfigValue::Array(arr)) => {
+                                    arr.iter()
+                                        .filter_map(|v| v.as_f64())
+                                        .map(|v| v as _)
+                                        .collect()
+                                }
+                                Some(chimera_core::config::ConfigValue::String(s)) => {
+                                    s.split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
+                                            format!("Failed to parse float in config '{}': {}", #config_key, e)
+                                        )))
+                                        .collect::<Result<#field_type, _>>()?
+                                }
+                                _ => {
+                                    return Err(chimera_core::ContainerError::BeanCreationFailed(
+                                        format!("Required config '{}' not found", #config_key)
+                                    ));
+                                }
+                            };
+                        }
+                    } else {
+                        // 其他Vec类型
+                        quote! {
+                            let #field_name: #field_type = match context.get_environment().get(#config_key) {
+                                Some(chimera_core::config::ConfigValue::String(s)) => {
+                                    s.split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
+                                            format!("Failed to parse element in config '{}': {}", #config_key, e)
+                                        )))
+                                        .collect::<Result<#field_type, _>>()?
+                                }
+                                _ => {
+                                    return Err(chimera_core::ContainerError::BeanCreationFailed(
+                                        format!("Required config '{}' not found", #config_key)
+                                    ));
+                                }
+                            };
+                        }
+                    }
+                } else if type_str.contains("String") {
                     quote! {
                         let #field_name = context.get_environment()
                             .get_string(#config_key)
-                            .ok_or_else(|| chimera_core::ContainerError::Custom(
+                            .ok_or_else(|| chimera_core::ContainerError::BeanCreationFailed(
                                 format!("Required config '{}' not found", #config_key)
                             ))?;
                     }
@@ -203,7 +412,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                     quote! {
                         let #field_name = context.get_environment()
                             .get_bool(#config_key)
-                            .ok_or_else(|| chimera_core::ContainerError::Custom(
+                            .ok_or_else(|| chimera_core::ContainerError::BeanCreationFailed(
                                 format!("Required config '{}' not found", #config_key)
                             ))?;
                     }
@@ -215,7 +424,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                 format!("Required config '{}' not found", #config_key)
                             ))?
                             .parse()
-                            .map_err(|e| chimera_core::ContainerError::Custom(
+                            .map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
                                 format!("Failed to parse config '{}': {}", #config_key, e)
                             ))?;
                     }
@@ -223,6 +432,15 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
             }
         } else {
             quote! {}
+        }
+    });
+
+    // 生成普通字段（无属性）的默认初始化代码
+    let plain_injections = plain_fields.iter().map(|field| {
+        let field_name = &field.ident;
+        let field_type = &field.ty;
+        quote! {
+            let #field_name: #field_type = Default::default();
         }
     });
 
@@ -316,7 +534,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #[::chimera_core::async_trait::async_trait]
-        impl chimera_core::ComponentService for #name {
+        impl chimera_core::ComponentBean for #name {
             fn bean_name() -> &'static str {
                 #bean_name
             }
@@ -342,6 +560,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
 
                 #(#autowired_injections)*
                 #(#value_injections)*
+                #(#plain_injections)*
 
                 Ok(Self {
                     #(#field_names),*

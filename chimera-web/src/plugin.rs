@@ -5,7 +5,6 @@
 use chimera_core::prelude::*;
 use crate::server::ServerProperties;
 use crate::server::ChimeraWebServer;
-use axum::Router;
 use std::sync::Arc;
 
 /// Web 应用插件
@@ -41,47 +40,30 @@ impl ApplicationPlugin for WebPlugin {
             })
             .map_err(|e| ApplicationError::Container(e))?;
 
-        tracing::info!("✅ ServerProperties configured");
+        tracing::info!("ServerProperties configured");
         Ok(())
     }
 
     /// 启动阶段 - 启动 Web 服务器
     async fn on_startup(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
-        // 创建基础路由器（无状态）
-        let mut router = Router::new();
-
-        // 自动注册所有控制器
-        let controller_count = crate::controller::get_all_controllers().count();
-
-        if controller_count > 0 {
-            tracing::info!("🎯 Registering {} controllers...", controller_count);
-
-            for registration in crate::controller::get_all_controllers() {
-                tracing::debug!(
-                    "  Registering controller '{}' at path '{}'",
-                    registration.type_name,
-                    registration.base_path
-                );
-
-                // 调用控制器的注册函数
-                router = (registration.register)(router);
-            }
-
-            tracing::info!("✅ All controllers registered successfully");
-        } else {
-            tracing::info!("ℹ️  No controllers found (this is ok for non-web apps)");
-        }
-
-        // 添加 ApplicationContext 作为 Extension，这样所有提取器都能访问它
-        let router = router.layer(axum::Extension(Arc::clone(context)));
-
         // 创建并启动服务器（在后台运行）
         let context_clone = Arc::clone(context);
         tokio::spawn(async move {
             match ChimeraWebServer::new(context_clone).await {
                 Ok(server) => {
-                    if let Err(e) = server.with_router(router).run().await {
-                        tracing::error!("Web server error: {}", e);
+                    // 初始化中间件和自动配置
+                    match server
+                        .initialize_middleware().await
+                        .and_then(|s| Ok(s.auto_register_controllers().with_middleware()))
+                    {
+                        Ok(configured_server) => {
+                            if let Err(e) = configured_server.run().await {
+                                tracing::error!("Web server error: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to configure web server: {}", e);
+                        }
                     }
                 }
                 Err(e) => {

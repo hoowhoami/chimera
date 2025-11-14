@@ -10,7 +10,6 @@ use tokio::net::TcpListener;
 
 use crate::{
     exception_handler::{build_exception_handler_registry, GlobalExceptionHandlerRegistry},
-    interceptor::{build_interceptor_registry, InterceptorRegistry},
     middleware::{global_exception_handler, request_id, request_logging},
     controller::get_all_controllers,
 };
@@ -38,9 +37,6 @@ pub struct ServerProperties {
 
     /// 是否启用全局异常处理
     pub enable_global_exception_handling: bool,
-
-    /// 是否启用拦截器
-    pub enable_interceptors: bool,
 }
 
 impl Default for ServerProperties {
@@ -53,7 +49,6 @@ impl Default for ServerProperties {
             enable_cors: false,
             enable_request_logging: true,
             enable_global_exception_handling: true,
-            enable_interceptors: true,
         }
     }
 }
@@ -74,9 +69,6 @@ impl ServerProperties {
                 .unwrap_or(true),
             enable_global_exception_handling: env
                 .get_bool("server.enable-global-exception-handling")
-                .unwrap_or(true),
-            enable_interceptors: env
-                .get_bool("server.enable-interceptors")
                 .unwrap_or(true),
         }
     }
@@ -100,9 +92,6 @@ pub struct ChimeraWebServer {
 
     /// 异常处理器注册表
     exception_registry: Option<Arc<GlobalExceptionHandlerRegistry>>,
-
-    /// 拦截器注册表
-    interceptor_registry: Option<Arc<InterceptorRegistry>>,
 }
 
 impl ChimeraWebServer {
@@ -124,7 +113,6 @@ impl ChimeraWebServer {
             context,
             router: None,
             exception_registry: None,
-            interceptor_registry: None,
         })
     }
 
@@ -136,18 +124,12 @@ impl ChimeraWebServer {
 
     /// 初始化异常处理器和拦截器
     pub async fn initialize_middleware(mut self) -> ApplicationResult<Self> {
-        // 1. 初始化异常处理器注册表
+
+        // 初始化异常处理器注册表
         if self.config.enable_global_exception_handling {
             let exception_registry = build_exception_handler_registry(&self.context).await?;
-            tracing::info!("✅ Global exception handling enabled");
+            tracing::info!("Global exception handling enabled");
             self.exception_registry = Some(Arc::new(exception_registry));
-        }
-
-        // 2. 初始化拦截器注册表
-        if self.config.enable_interceptors {
-            let interceptor_registry = build_interceptor_registry(&self.context).await?;
-            tracing::info!("✅ Handler interceptors enabled");
-            self.interceptor_registry = Some(Arc::new(interceptor_registry));
         }
 
         Ok(self)
@@ -159,7 +141,7 @@ impl ChimeraWebServer {
 
         // 自动注册所有控制器路由
         for controller in get_all_controllers() {
-            tracing::info!("📋 Registering controller: {} at {}",
+            tracing::info!("Registering controller: {} at {}",
                 controller.type_name,
                 controller.base_path
             );
@@ -174,6 +156,22 @@ impl ChimeraWebServer {
     pub fn with_middleware(mut self) -> Self {
         let mut router = self.router.unwrap_or_else(|| Router::new());
 
+        // 应用中间件（注意顺序：后添加的先执行）
+        if self.config.enable_global_exception_handling && self.exception_registry.is_some() {
+            router = router.layer(middleware::from_fn(global_exception_handler));
+            tracing::debug!("Applied global exception handling middleware");
+        }
+
+        if self.config.enable_request_logging {
+            router = router.layer(middleware::from_fn(request_logging));
+            tracing::debug!("Applied request logging middleware");
+        }
+
+        // 请求ID中间件通常是最外层的
+        router = router.layer(middleware::from_fn(request_id));
+        tracing::debug!("Applied request ID middleware");
+
+        // 添加Extension层（这些需要在中间件之后添加，这样它们会在外层先执行，将数据注入request）
         // 添加共享状态
         router = router.layer(Extension(self.context.clone()));
 
@@ -181,31 +179,6 @@ impl ChimeraWebServer {
         if let Some(exception_registry) = &self.exception_registry {
             router = router.layer(Extension(exception_registry.clone()));
         }
-
-        if let Some(interceptor_registry) = &self.interceptor_registry {
-            router = router.layer(Extension(interceptor_registry.clone()));
-        }
-
-        // 应用中间件（注意顺序：后添加的先执行）
-        if self.config.enable_global_exception_handling && self.exception_registry.is_some() {
-            router = router.layer(middleware::from_fn(global_exception_handler));
-            tracing::debug!("📦 Applied global exception handling middleware");
-        }
-
-        if self.config.enable_interceptors && self.interceptor_registry.is_some() {
-            // TODO: Fix interceptor middleware compilation issue
-            // router = router.layer(middleware::from_fn(interceptor_middleware));
-            tracing::debug!("📦 Interceptor middleware temporarily disabled due to compilation issues");
-        }
-
-        if self.config.enable_request_logging {
-            router = router.layer(middleware::from_fn(request_logging));
-            tracing::debug!("📦 Applied request logging middleware");
-        }
-
-        // 请求ID中间件通常是最外层的
-        router = router.layer(middleware::from_fn(request_id));
-        tracing::debug!("📦 Applied request ID middleware");
 
         self.router = Some(router);
         self
@@ -228,29 +201,23 @@ impl ChimeraWebServer {
             .unwrap_or_else(|| Router::new())
             .into_make_service();
 
-        tracing::info!("🚀 Starting Chimera Web Server");
-        tracing::info!("📍 Server address: http://{}", addr);
-        tracing::info!("⚙️  Configuration:");
-        tracing::info!("   • Global exception handling: {}",
-            if self.config.enable_global_exception_handling { "✅" } else { "❌" });
-        tracing::info!("   • Handler interceptors: {}",
-            if self.config.enable_interceptors { "✅" } else { "❌" });
-        tracing::info!("   • Request logging: {}",
-            if self.config.enable_request_logging { "✅" } else { "❌" });
+        tracing::info!("Starting Chimera Web Server");
+        tracing::info!("Server address: http://{}", addr);
+        tracing::info!("Configuration:");
+        tracing::info!("  - Global exception handling: {}",
+            if self.config.enable_global_exception_handling { "enabled" } else { "disabled" });
+        tracing::info!("  - Request logging: {}",
+            if self.config.enable_request_logging { "enabled" } else { "disabled" });
 
         if let Some(_exception_registry) = &self.exception_registry {
             // 这里可以添加日志显示注册了多少个异常处理器，但需要在registry中添加方法
-        }
-
-        if let Some(interceptor_registry) = &self.interceptor_registry {
-            tracing::info!("   • Registered interceptors: {}", interceptor_registry.len());
         }
 
         let listener = TcpListener::bind(&addr)
             .await
             .map_err(|e| ApplicationError::Other(format!("Failed to bind to {}: {}", addr, e)))?;
 
-        tracing::info!("✅ Server ready! Listening on http://{}", addr);
+        tracing::info!("Server ready! Listening on http://{}", addr);
 
         axum::serve(listener, app)
             .await

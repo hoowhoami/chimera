@@ -3,16 +3,28 @@
 //! 仿照 controller 的注册方式，使用 inventory 实现编译时自动收集
 
 use crate::exception_handler::{GlobalExceptionHandler, GlobalExceptionHandlerRegistry};
+use chimera_core::{ApplicationContext, Container};
+use std::sync::Arc;
 
 /// 异常处理器注册信息
 pub struct ExceptionHandlerRegistration {
     pub name: &'static str,
-    pub create: fn() -> Box<dyn GlobalExceptionHandler>,
+    pub bean_name: &'static str,
+    /// 类型转换函数：将 Arc<dyn Any> 转换为 Arc<dyn GlobalExceptionHandler>
+    pub cast_fn: fn(Arc<dyn std::any::Any + Send + Sync>) -> Option<Arc<dyn GlobalExceptionHandler>>,
 }
 
 impl ExceptionHandlerRegistration {
-    pub fn new(name: &'static str, create: fn() -> Box<dyn GlobalExceptionHandler>) -> Self {
-        Self { name, create }
+    pub const fn new(
+        name: &'static str,
+        bean_name: &'static str,
+        cast_fn: fn(Arc<dyn std::any::Any + Send + Sync>) -> Option<Arc<dyn GlobalExceptionHandler>>,
+    ) -> Self {
+        Self {
+            name,
+            bean_name,
+            cast_fn,
+        }
     }
 }
 
@@ -26,24 +38,57 @@ pub fn get_all_exception_handlers() -> Vec<&'static ExceptionHandlerRegistration
 }
 
 /// 构建异常处理器注册表 - 使用编译时收集的处理器
-pub fn build_exception_handler_registry_from_inventory() -> GlobalExceptionHandlerRegistry {
+pub async fn build_exception_handler_registry_from_inventory(
+    context: &Arc<ApplicationContext>,
+) -> chimera_core::ApplicationResult<GlobalExceptionHandlerRegistry> {
     let mut registry = GlobalExceptionHandlerRegistry::new();
 
-    tracing::info!("🔍 Discovering exception handlers from inventory...");
+    tracing::info!("Discovering exception handlers from inventory...");
 
     for handler_info in get_all_exception_handlers() {
-        let handler = (handler_info.create)();
-        tracing::info!(
-            "✅ Auto-registered exception handler: {}",
-            handler_info.name
-        );
-        registry.register_boxed(handler);
+        // 从容器中获取已经创建好的bean实例
+        match context.get_bean(handler_info.bean_name).await {
+            Ok(bean_any) => {
+                // 使用类型转换函数将 Arc<dyn Any> 转换为 Arc<dyn GlobalExceptionHandler>
+                match (handler_info.cast_fn)(bean_any) {
+                    Some(handler) => {
+                        tracing::info!(
+                            "Auto-registered exception handler: {} (bean: {})",
+                            handler_info.name,
+                            handler_info.bean_name
+                        );
+                        registry.register_arc(handler);
+                    }
+                    None => {
+                        tracing::error!(
+                            "Failed to cast bean '{}' to GlobalExceptionHandler",
+                            handler_info.bean_name
+                        );
+                        return Err(chimera_core::ApplicationError::Other(format!(
+                            "Failed to cast bean '{}' to GlobalExceptionHandler",
+                            handler_info.bean_name
+                        )));
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to get exception handler bean '{}': {}",
+                    handler_info.bean_name,
+                    e
+                );
+                return Err(chimera_core::ApplicationError::Other(format!(
+                    "Failed to get exception handler bean '{}': {}",
+                    handler_info.bean_name, e
+                )));
+            }
+        }
     }
 
     tracing::info!(
-        "✅ Exception handler discovery completed: {} handlers registered",
+        "Exception handler discovery completed: {} handlers registered",
         registry.len()
     );
 
-    registry
+    Ok(registry)
 }

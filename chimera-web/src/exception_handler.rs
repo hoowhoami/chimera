@@ -152,7 +152,7 @@ impl ApplicationError {
 
 /// 异常处理器注册表
 pub struct GlobalExceptionHandlerRegistry {
-    handlers: Vec<Box<dyn GlobalExceptionHandler>>,
+    handlers: Vec<Arc<dyn GlobalExceptionHandler>>,
 }
 
 impl GlobalExceptionHandlerRegistry {
@@ -163,12 +163,12 @@ impl GlobalExceptionHandlerRegistry {
     }
 
     pub fn register<H: GlobalExceptionHandler + 'static>(&mut self, handler: H) {
-        self.handlers.push(Box::new(handler));
+        self.handlers.push(Arc::new(handler));
         // 按优先级排序
         self.handlers.sort_by_key(|h| h.priority());
     }
 
-    pub fn register_boxed(&mut self, handler: Box<dyn GlobalExceptionHandler>) {
+    pub fn register_arc(&mut self, handler: Arc<dyn GlobalExceptionHandler>) {
         self.handlers.push(handler);
         // 按优先级排序
         self.handlers.sort_by_key(|h| h.priority());
@@ -278,10 +278,10 @@ impl Default for GlobalExceptionHandlerRegistry {
 
 /// 🔥 框架核心：自动发现并构建异常处理器注册表
 pub async fn build_exception_handler_registry(
-    _context: &Arc<ApplicationContext>,
+    context: &Arc<ApplicationContext>,
 ) -> chimera_core::ApplicationResult<GlobalExceptionHandlerRegistry> {
     // 使用 inventory 机制自动发现所有异常处理器
-    Ok(crate::exception_handler_registry::build_exception_handler_registry_from_inventory())
+    crate::exception_handler_registry::build_exception_handler_registry_from_inventory(context).await
 }
 
 /// 🔥 框架扩展接口：允许框架自动注册新的异常处理器类型
@@ -299,7 +299,7 @@ impl GlobalExceptionHandlerRegistry {
             Ok(handler) => {
                 let handler_name = handler.name().to_string();
                 self.register((*handler).clone());
-                tracing::info!("✅ Auto-registered exception handler: {}", handler_name);
+                tracing::info!("Auto-registered exception handler: {}", handler_name);
                 Ok(true)
             }
             Err(_) => {

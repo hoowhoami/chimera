@@ -86,7 +86,7 @@ impl ChimeraApplication {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            config_files: vec!["application.toml".to_string()],
+            config_files: Vec::new(), // 初始为空，将在 run 时根据规则查找
             env_prefix: "APP_".to_string(),
             profiles: Vec::new(),
             show_banner: true,
@@ -300,21 +300,36 @@ impl ChimeraApplication {
     /// 1. application.toml (default)
     /// 2. application-{profile}.toml (profile specific)
     ///
+    /// 配置文件查找顺序（类似Spring Boot）：
+    /// - 如果用户手动指定了配置文件路径，则使用指定的路径
+    /// - 如果未指定，按以下顺序查找（找到第一个即停止）：
+    ///   1. config/application.toml
+    ///   2. application.toml
+    ///
     /// 后加载的配置会覆盖先加载的配置
     fn load_configurations(
         &self,
         builder: &mut crate::container::ApplicationContextBuilder,
         active_profiles: &[String],
     ) -> ApplicationResult<()> {
+        // 确定要使用的配置文件列表
+        let config_files = if self.config_files.is_empty() {
+            // 用户未指定配置文件，使用默认查找规则
+            self.find_default_config_files()
+        } else {
+            // 用户已指定配置文件，直接使用
+            self.config_files.clone()
+        };
+
         // 1. 加载默认配置文件 (application.toml)
-        for base_config in &self.config_files {
+        for base_config in &config_files {
             self.try_load_config_file(builder, base_config, 0)?;
         }
 
         // 2. 加载 profile 特定配置文件
         // application-dev.toml, application-prod.toml, etc.
         for (index, profile) in active_profiles.iter().enumerate() {
-            for base_config in &self.config_files {
+            for base_config in &config_files {
                 // 从 application.toml 推导出 application-dev.toml
                 let profile_config = self.get_profile_config_path(base_config, profile);
                 // 优先级递增：profile 配置优先级高于默认配置
@@ -323,6 +338,30 @@ impl ChimeraApplication {
         }
 
         Ok(())
+    }
+
+    /// 查找默认配置文件
+    ///
+    /// 按照以下顺序查找，找到第一个存在的文件即返回：
+    /// 1. config/application.toml
+    /// 2. application.toml
+    fn find_default_config_files(&self) -> Vec<String> {
+        let candidates = vec![
+            "config/application.toml",
+            "application.toml",
+        ];
+
+        for candidate in candidates {
+            if Path::new(candidate).exists() {
+                tracing::debug!("Found configuration file: {}", candidate);
+                return vec![candidate.to_string()];
+            }
+        }
+
+        // 如果都不存在，返回默认值（config/application.toml）
+        // 这样在日志中会显示找不到配置文件，但不会报错
+        tracing::debug!("No configuration file found, using default path: config/application.toml");
+        vec!["config/application.toml".to_string()]
     }
 
     /// 获取 profile 配置文件路径
@@ -365,6 +404,29 @@ impl ChimeraApplication {
     /// 便捷方法：使用默认配置运行
     pub async fn run_with_defaults(name: impl Into<String>) -> ApplicationResult<RunningApplication> {
         Self::new(name).run().await
+    }
+
+    /// 便捷方法：运行应用并阻塞直到关闭（类似 Spring Boot）
+    ///
+    /// 这是一个便捷方法，等价于 `run().await?.wait_for_shutdown().await`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use chimera_core::ChimeraApplication;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> chimera_core::ApplicationResult<()> {
+    ///     // 一行启动应用，自动阻塞直到收到关闭信号
+    ///     ChimeraApplication::new("MyApp")
+    ///         .env_prefix("APP_")
+    ///         .run_until_shutdown()
+    ///         .await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn run_until_shutdown(self) -> ApplicationResult<()> {
+        self.run().await?.wait_for_shutdown().await
     }
 
     /// 打印 banner

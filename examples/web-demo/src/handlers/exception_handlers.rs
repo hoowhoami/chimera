@@ -2,27 +2,19 @@
 //!
 //! 展示如何实现自定义的全局异常处理器
 
-use chimera_core::{ComponentService, Container};
+use chimera_core::ComponentBean;
 use chimera_core_macros::{bean, Component};
 use chimera_web::exception_handler::{ErrorResponse, GlobalExceptionHandler};
 use chimera_web_macros::ExceptionHandler;
-use serde_json::json;
+use serde_json::{json, value};
 
 /// 业务异常处理器 - 类似Spring的@ControllerAdvice
 /// 🔥 用户只需要添加这两个注解，框架自动完成注册！
 #[derive(ExceptionHandler, Component)]
 #[bean("businessExceptionHandler")]
 pub struct BusinessExceptionHandler {
-    #[value("app.debug", default = "false")]
+    #[value("app.debug", default = false)]
     debug_mode: bool,
-}
-
-impl Default for BusinessExceptionHandler {
-    fn default() -> Self {
-        Self {
-            debug_mode: false,
-        }
-    }
 }
 
 #[async_trait::async_trait]
@@ -113,16 +105,8 @@ impl BusinessExceptionHandler {
 #[derive(ExceptionHandler, Component)]
 #[bean("databaseExceptionHandler")]
 pub struct DatabaseExceptionHandler {
-    #[value("app.debug", default = "false")]
+    #[value("app.debug", default = false)]
     debug_mode: bool,
-}
-
-impl Default for DatabaseExceptionHandler {
-    fn default() -> Self {
-        Self {
-            debug_mode: false,
-        }
-    }
 }
 
 #[async_trait::async_trait]
@@ -182,4 +166,70 @@ impl DatabaseExceptionHandler {
             || error_str.contains("connection refused")
             || error_str.contains("connection reset")
     }
+}
+
+
+#[derive(ExceptionHandler, Component)]
+#[bean("otherExceptionHandler")]
+pub struct OtherExceptionHandler {
+    #[value("app.debug", default = true)]
+    debug_mode: bool,
+
+    #[value("app.allow-ip-list", default = "127.0.0.1, localhost")]
+    allow_ip_list: Vec<String>,
+
+    #[value("app.allowed-ports", default = "8080, 9000, 3000")]
+    allowed_ports: Vec<i32>,
+}
+
+#[async_trait::async_trait]
+impl GlobalExceptionHandler for OtherExceptionHandler {
+
+    fn name(&self) -> &str {
+        "OtherExceptionHandler"
+    }
+
+    fn priority(&self) -> i32 {
+        100 // 低优先级
+    }
+
+    fn can_handle(&self, _error: &(dyn std::error::Error + Send + Sync)) -> bool {
+        true
+    }
+
+    async fn handle_error(
+        &self,
+        error: &(dyn std::error::Error + Send + Sync),
+        request_path: &str,
+    ) -> Option<ErrorResponse> {
+
+        println!("debug_mode: {}", self.debug_mode);
+        println!("allow_ip_list: {:?}", self.allow_ip_list);
+        println!("allowed_ports: {:?}", self.allowed_ports);
+
+        let mut response = ErrorResponse::new(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_server_error".to_string(),
+            if self.debug_mode {
+                error.to_string()
+            } else {
+                "system error".to_string()
+            },
+            request_path.to_string(),
+        );
+        
+        if self.debug_mode {
+            response = response.with_trace(format!("{:?}", error));
+        }
+
+        // 添加错误的详细信息
+        response = response.with_details(json!({
+            "error_type": "SYSTEM_ERROR",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "recoverable": true,
+        }));
+
+        Some(response)
+    }
+
 }

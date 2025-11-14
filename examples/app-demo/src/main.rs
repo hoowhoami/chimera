@@ -77,11 +77,13 @@ struct SystemService {
 
     #[autowired]
     event_publisher: Arc<AsyncEventPublisher>,
+
+    test: String,
 }
 
 impl SystemService {
     async fn demonstrate_core_components(&self) -> ApplicationResult<()> {
-        println!("🔧 System Service - Core Components Injection Demo:");
+        println!("System Service - Core Components Injection Demo:");
 
         // 使用注入的 Environment
         println!(
@@ -104,7 +106,7 @@ impl SystemService {
         self.event_publisher.publish_event(custom_event).await;
         println!("  Published event using injected EventPublisher");
 
-        println!("  ✅ ALL core components (ApplicationContext, Environment, EventPublisher) successfully injected!");
+        println!("  ALL core components (ApplicationContext, Environment, EventPublisher) successfully injected!");
 
         Ok(())
     }
@@ -289,7 +291,7 @@ struct OrderService {
 
 impl OrderService {
     fn create_order(&self, order_id: &str, amount: i64) -> ApplicationResult<()> {
-        println!("📦 Creating order: {} (amount: {})", order_id, amount);
+        println!("Creating order: {} (amount: {})", order_id, amount);
 
         // 保存到数据库
         self.database.save_user(order_id, "order_data")?;
@@ -298,9 +300,9 @@ impl OrderService {
         if let Some(metrics) = &self.metrics {
             metrics.track("order.created", 1);
             metrics.track("order.amount", amount);
-            println!("   ✅ Metrics tracked");
+            println!("   Metrics tracked");
         } else {
-            println!("   ⚠️  Metrics service not available (optional)");
+            println!("   Metrics service not available (optional)");
         }
 
         Ok(())
@@ -323,7 +325,7 @@ impl PaymentService {
         if let Some(service) = &self.optional_service {
             println!("   Using optional service: {:?}", service);
         } else {
-            println!("   ⚠️  Optional service 'nonExistentService' not found (as expected)");
+            println!("   Optional service 'nonExistentService' not found (as expected)");
         }
 
         Ok(())
@@ -413,25 +415,22 @@ pub mod rand {
 
 #[tokio::main]
 async fn main() -> ApplicationResult<()> {
-    println!("🚀 Chimera Framework - Comprehensive Demo\n");
+    println!("Chimera Framework - Comprehensive Demo\n");
 
-    // 配置查找
-    let config_file = if std::path::Path::new("examples/app-demo/application.toml").exists() {
-        "examples/app-demo/application.toml"
-    } else {
-        "application.toml"
-    };
+    // 配置文件会自动从以下位置查找（按优先级）：
+    // 1. config/application.toml
+    // 2. application.toml
+    // 支持 profile 特定配置：config/application-dev.toml, config/application-prod.toml 等
 
     // 启动应用
     let context = ChimeraApplication::new("ChimeraDemo")
-        .config_file(config_file)
         .env_prefix("DEMO_")
         .shutdown_hook(|| {
-            println!("🔧 Cleaning up resources...");
+            println!("Cleaning up resources...");
             Ok(())
         })
         .shutdown_hook(|| {
-            println!("🔧 Closing connections...");
+            println!("Closing connections...");
             Ok(())
         })
         .run()
@@ -444,7 +443,7 @@ async fn main() -> ApplicationResult<()> {
         context.register_listener(Arc::new(adapter)).await;
     }
 
-    println!("✅ Application initialized\n");
+    println!("Application initialized\n");
 
     // 使用作用域确保引用在shutdown前释放
     {
@@ -511,8 +510,8 @@ async fn main() -> ApplicationResult<()> {
 
     context.shutdown().await?;
 
-    println!("✅ Demo completed successfully");
-    println!("💡 Framework features demonstrated:");
+    println!("Demo completed successfully");
+    println!("Framework features demonstrated:");
     println!("  • @ConfigurationProperties - Type-safe configuration");
     println!("  • @Component & @autowired - Dependency injection");
     println!("  • @autowired(\"beanName\") - Named bean injection");

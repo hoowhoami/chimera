@@ -23,7 +23,7 @@ pub mod utils;
 // 重新导出常用类型
 pub use app::{ChimeraApplication, RunningApplication};
 pub use bean::{Bean, BeanDefinition, BeanFactory};
-pub use component::ComponentService;
+pub use component::ComponentBean;
 pub use component::{ComponentRegistry, ConfigurationPropertiesRegistry, EventListenerRegistry};
 pub use config::{
     ConfigValue, Environment, EnvironmentPropertySource, MapPropertySource, PropertySource,
@@ -53,7 +53,7 @@ pub use plugin::{ApplicationPlugin, PluginRegistry, PluginSubmission, load_plugi
 pub mod prelude {
     pub use crate::app::{ChimeraApplication, RunningApplication};
     pub use crate::bean::{Bean, BeanDefinition, BeanFactory};
-    pub use crate::component::ComponentService;
+    pub use crate::component::ComponentBean;
     pub use crate::config::{
         self, ConfigValue, Environment, EnvironmentPropertySource, MapPropertySource,
         PropertySource, TomlPropertySource,

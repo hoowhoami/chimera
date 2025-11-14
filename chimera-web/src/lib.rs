@@ -17,12 +17,9 @@ pub mod middleware;
 pub mod plugin;
 pub mod exception_handler;
 pub mod exception_handler_registry;
-pub mod interceptor;
-pub mod interceptor_registry;
 
 // 重新导出核心类型
 pub use exception_handler_registry::{ExceptionHandlerRegistration, get_all_exception_handlers};
-pub use interceptor_registry::{HandlerInterceptorRegistration, get_all_handler_interceptors};
 
 // 导出 inventory，供宏使用
 pub use inventory;
@@ -37,8 +34,6 @@ pub mod prelude {
     pub use crate::plugin::*;
     pub use crate::exception_handler::*;
     pub use crate::exception_handler_registry::*;
-    pub use crate::interceptor::*;
-    pub use crate::interceptor_registry::*;
 
     pub use axum;
     pub use axum::routing::{get, post, put, delete, patch};
