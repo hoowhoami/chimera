@@ -5,8 +5,6 @@ use std::sync::Arc;
 use crate::config::AppConfig;
 use crate::models::{User, CreateUserRequest, UpdateUserRequest, SearchQuery};
 
-// ==================== 服务层 ====================
-
 #[derive(Component, Clone)]
 #[bean("userService")]
 pub struct UserService {

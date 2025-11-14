@@ -1,5 +1,6 @@
 use chimera_core::prelude::*;
 use chimera_core_macros::Component;
+use chimera_validator::valid;
 use chimera_web_macros::{Controller, controller, get_mapping, post_mapping, put_mapping, request_mapping};
 use chimera_web::prelude::*;
 use chimera_web::exception_handler::ApplicationError;
@@ -8,13 +9,8 @@ use serde_json::json;
 use std::sync::Arc;
 
 use crate::config::AppConfig;
-use crate::service::services::UserService;
-use crate::models::{CreateUserRequest, UpdateUserRequest, SearchQuery, LoginForm, CommentForm};
-
-// ==================== 控制器 ====================
-//
-// 现在可以直接在 controller 方法中使用提取器！
-// 框架会自动处理参数注入和路由注册
+use crate::service::UserService;
+use crate::models::{CreateUserRequest, UpdateUserRequest, SearchQuery, LoginForm, CommentForm, RegisterUserRequest, CreateProductRequest};
 
 #[derive(Controller, Component, Clone)]
 #[route("/api")]
@@ -340,116 +336,77 @@ impl ApiController {
             "note": "连续快速请求此端点以测试限流功能"
         }))
     }
-}
 
-// ==================== 文档控制器 ====================
+    // ========== 参数验证示例端点 ==========
 
-#[derive(Controller, Component, Clone)]
-#[route("/demo")]
-pub struct DemoController;
+    /// POST /api/register
+    /// 用户注册 - 演示参数验证功能
+    ///
+    /// 手动调用 validate() 方法验证请求参数
+    /// 如果验证失败，返回 400 错误和详细的验证错误信息
+    ///
+    /// 示例请求体：
+    /// ```json
+    /// {
+    ///   "username": "alice",
+    ///   "email": "alice@example.com",
+    ///   "password": "password123",
+    ///   "age": 25,
+    ///   "phone": "13800138000"
+    /// }
+    /// ```
+    #[post_mapping("/register")]
+    #[valid]
+    async fn user_register(&self, RequestBody(request): RequestBody<RegisterUserRequest>) -> impl IntoResponse {
+        // 手动验证请求参数
+        use chimera_validator::Validate;
+        if let Err(e) = request.validate() {
+            return ApplicationError::ValidationError(format!("{:?}", e)).into_response();
+        }
 
-#[controller]
-impl DemoController {
-    /// GET /demo/guide
-    #[get_mapping("/guide")]
-    async fn guide(&self) -> impl IntoResponse {
+        // 如果执行到这里，说明验证已通过
         ResponseEntity::ok(json!({
-            "title": "Chimera Web 参数注入完整指南",
-            "description": "统一在 controller 方法中使用提取器进行参数注入",
+            "message": "用户注册成功",
+            "username": request.username,
+            "email": request.email,
+            "age": request.age,
+            "phone": request.phone,
+            "note": "所有参数验证已通过"
+        })).into_response()
+    }
 
-            "philosophy": {
-                "principle": "所有参数都通过提取器明确声明，直接在 controller 方法中使用",
-                "benefits": [
-                    "统一且清晰：参数来源一目了然",
-                    "自动注册：无需手动注册路由",
-                    "类型安全：编译时检查",
-                    "Spring Boot 风格：完全符合 Spring Boot 使用习惯"
-                ]
+    /// POST /api/products
+    /// 创建商品 - 演示更多验证规则
+    ///
+    /// 手动调用 validate() 方法验证商品信息
+    ///
+    /// 示例请求体：
+    /// ```json
+    /// {
+    ///   "name": "MacBook Pro",
+    ///   "description": "Apple M3 Max chip, 16-inch display",
+    ///   "price": 19999,
+    ///   "stock": 100
+    /// }
+    /// ```
+    #[post_mapping("/products")]
+    async fn create_product(&self, RequestBody(request): RequestBody<CreateProductRequest>) -> impl IntoResponse {
+        // 手动验证请求参数
+        use chimera_validator::Validate;
+        if let Err(e) = request.validate() {
+            return ApplicationError::ValidationError(format!("{:?}", e)).into_response();
+        }
+
+        ResponseEntity::ok(json!({
+            "message": "商品创建成功",
+            "product": {
+                "id": 1001,
+                "name": request.name,
+                "description": request.description,
+                "price": request.price,
+                "stock": request.stock
             },
-
-            "available_extractors": {
-                "autowired": {
-                    "name": "Autowired<T>",
-                    "description": "从 DI 容器注入 Bean（类似 @Autowired）",
-                    "example": "Autowired(service): Autowired<UserService>",
-                    "spring_boot": "@Autowired UserService userService"
-                },
-                "request_body": {
-                    "name": "RequestBody<T>",
-                    "description": "从 JSON body 反序列化（类似 @RequestBody）",
-                    "example": "RequestBody(user): RequestBody<CreateUserRequest>",
-                    "spring_boot": "@RequestBody User user"
-                },
-                "path_variable": {
-                    "name": "PathVariable<T>",
-                    "description": "从路径参数提取（类似 @PathVariable），支持正则验证",
-                    "example": "PathVariable(id): PathVariable<u32>",
-                    "validation": "path.validate(r\"^[a-zA-Z0-9_]+$\")",
-                    "spring_boot": "@PathVariable Long id"
-                },
-                "request_param": {
-                    "name": "RequestParam<T>",
-                    "description": "从 query 参数反序列化（类似 @RequestParam）",
-                    "example": "RequestParam(query): RequestParam<SearchQuery>",
-                    "spring_boot": "@RequestParam String name"
-                },
-                "form_data": {
-                    "name": "FormData<T>",
-                    "description": "从表单数据反序列化（支持 application/x-www-form-urlencoded 和 multipart/form-data）",
-                    "example": "FormData(form): FormData<LoginForm>",
-                    "spring_boot": "@ModelAttribute LoginForm form"
-                },
-                "request_headers": {
-                    "name": "RequestHeaders",
-                    "description": "提取所有 HTTP 请求头（类似 @RequestHeader）",
-                    "example": "RequestHeaders(headers): RequestHeaders",
-                    "spring_boot": "@RequestHeader HttpHeaders headers"
-                }
-            },
-
-            "usage_examples": {
-                "simple": {
-                    "description": "获取单个用户",
-                    "code": "#[get_mapping(\"/users/:id\")] async fn get_user(&self, PathVariable(id): PathVariable<u32>) -> impl IntoResponse"
-                },
-                "with_body": {
-                    "description": "创建用户",
-                    "code": "#[post_mapping(\"/users\")] async fn create_user(&self, RequestBody(req): RequestBody<CreateUserRequest>) -> impl IntoResponse"
-                },
-                "combined": {
-                    "description": "更新用户（组合路径参数和请求体）",
-                    "code": "#[put_mapping(\"/users/:id\")] async fn update_user(&self, PathVariable(id): PathVariable<u32>, RequestBody(req): RequestBody<UpdateRequest>) -> impl IntoResponse"
-                },
-                "complex": {
-                    "description": "复杂操作（三种提取器组合）",
-                    "code": "#[post_mapping(\"/users/:id/actions\")] async fn action(&self, PathVariable(id): PathVariable<u32>, RequestParam(params): RequestParam<Value>, RequestBody(body): RequestBody<Value>) -> impl IntoResponse"
-                }
-            },
-
-            "comparison_with_spring_boot": {
-                "spring_boot": {
-                    "controller": "@RestController @RequestMapping(\"/api\")",
-                    "autowired": "@Autowired UserService userService",
-                    "request_body": "@RequestBody User user",
-                    "path_variable": "@PathVariable Long id",
-                    "request_param": "@RequestParam String name"
-                },
-                "chimera": {
-                    "controller": "#[derive(Controller)] #[route(\"/api\")]",
-                    "autowired": "Autowired(userService): Autowired<UserService>",
-                    "request_body": "RequestBody(user): RequestBody<User>",
-                    "path_variable": "PathVariable(id): PathVariable<u32>",
-                    "request_param": "RequestParam(name): RequestParam<String>"
-                }
-            },
-
-            "key_features": [
-                "完全自动化：路由自动注册，无需手动配置",
-                "类型安全：所有参数都有明确的类型",
-                "错误处理：提取失败自动返回适当的 HTTP 状态码",
-                "灵活组合：可以在一个方法中使用多个提取器",
-                "Spring Boot 风格：完全符合 Java 开发者的使用习惯"
-            ]
-        }))
+            "note": "商品信息验证通过"
+        })).into_response()
     }
 }
