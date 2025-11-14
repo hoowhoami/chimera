@@ -341,8 +341,6 @@ impl ApiController {
 
     /// POST /api/register
     /// 用户注册 - 演示参数验证功能
-    ///
-    /// 手动调用 validate() 方法验证请求参数
     /// 如果验证失败，返回 400 错误和详细的验证错误信息
     ///
     /// 示例请求体：
@@ -357,14 +355,8 @@ impl ApiController {
     /// ```
     #[post_mapping("/register")]
     #[valid]
-    async fn user_register(&self, RequestBody(request): RequestBody<RegisterUserRequest>) -> impl IntoResponse {
-        // 手动验证请求参数
-        use chimera_validator::Validate;
-        if let Err(e) = request.validate() {
-            return ApplicationError::ValidationError(format!("{:?}", e)).into_response();
-        }
-
-        // 如果执行到这里，说明验证已通过
+    async fn register(&self, RequestBody(request): RequestBody<RegisterUserRequest>) -> impl IntoResponse {
+        // 如果执行到这里，说明验证已通过（由 #[valid] 宏自动处理）
         ResponseEntity::ok(json!({
             "message": "用户注册成功",
             "username": request.username,
@@ -378,8 +370,6 @@ impl ApiController {
     /// POST /api/products
     /// 创建商品 - 演示更多验证规则
     ///
-    /// 手动调用 validate() 方法验证商品信息
-    ///
     /// 示例请求体：
     /// ```json
     /// {
@@ -390,13 +380,8 @@ impl ApiController {
     /// }
     /// ```
     #[post_mapping("/products")]
+    #[valid]
     async fn create_product(&self, RequestBody(request): RequestBody<CreateProductRequest>) -> impl IntoResponse {
-        // 手动验证请求参数
-        use chimera_validator::Validate;
-        if let Err(e) = request.validate() {
-            return ApplicationError::ValidationError(format!("{:?}", e)).into_response();
-        }
-
         ResponseEntity::ok(json!({
             "message": "商品创建成功",
             "product": {

@@ -107,7 +107,9 @@ pub trait ComponentBean: Sized + Send + Sync + 'static {
     async fn create_from_context(context: &Arc<ApplicationContext>) -> ContainerResult<Self>;
 
     /// 注册到容器
-    async fn register(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+    ///
+    /// 注意：此方法使用特殊前缀 `__register_bean` 以避免与用户定义的方法名冲突
+    async fn __register_bean(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
         let ctx = Arc::clone(context);
         let scope = Self::scope();
         let lazy = Self::lazy();

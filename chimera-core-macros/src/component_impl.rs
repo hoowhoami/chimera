@@ -574,7 +574,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                 registrar: |ctx: &std::sync::Arc<chimera_core::ApplicationContext>| {
                     let ctx = std::sync::Arc::clone(ctx);
                     Box::pin(async move {
-                        #name::register(&ctx).await
+                        #name::__register_bean(&ctx).await
                     })
                 },
                 name: #bean_name,
