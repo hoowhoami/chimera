@@ -4,12 +4,12 @@
 
 ## 特点
 
-- 🚀 **Spring Boot 风格** - 熟悉的注解和开发体验
-- 🔒 **类型安全** - 编译期依赖检查，运行时零成本
-- 🧵 **线程安全** - 所有 Bean 都是 `Send + Sync`
-- 🌐 **Web 框架** - 基于 Axum 的高性能 Web 服务器
-- ⚙️ **配置管理** - 多源配置、环境切换、类型绑定
-- 📦 **依赖注入** - 自动装配、生命周期管理、事件系统
+- **Spring Boot 风格** - 熟悉的注解和开发体验
+- **类型安全** - 编译期依赖检查，运行时零成本
+- **线程安全** - 所有 Bean 都是 `Send + Sync`
+- **Web 框架** - 基于 Axum 的高性能 Web 服务器
+- **配置管理** - 多源配置、环境切换、类型绑定
+- **依赖注入** - 自动装配、生命周期管理、事件系统
 
 ## 核心特性
 
@@ -43,11 +43,13 @@
 ### 配置管理
 
 - **@ConfigurationProperties** - 批量绑定配置到类型安全的结构体，自动注册为 Bean
-- **@Value 注入** - 直接将配置值注入到字段，支持默认值
+- **@Value 注入** - 直接将配置值注入到字段，支持默认值和多种数据类型（String、i32、Vec等）
 - **多配置源** - 支持 TOML 配置文件、环境变量等多种配置来源
+- **自动查找配置** - 类似 Spring Boot，自动从 `config/application.toml` 或 `application.toml` 加载
 - **优先级管理** - 环境变量 > 配置文件 > 默认值，灵活覆盖配置
-- **Profile 支持** - 类似 Spring 的 dev/prod 环境配置切换
+- **Profile 支持** - 类似 Spring 的 dev/prod 环境配置切换（`config/application-dev.toml`）
 - **字段名转换** - 自动将 snake_case 转换为 kebab-case
+- **数组支持** - @Value 支持 Vec 类型，兼容 TOML 数组和逗号分隔字符串
 
 ### Bean 作用域与生命周期
 
@@ -146,16 +148,12 @@ impl UserController {
     }
 }
 
-// 2. 启动应用
+// 2. 启动应用（一行启动，自动阻塞）
 #[tokio::main]
 async fn main() -> ApplicationResult<()> {
-    let app = ChimeraApplication::new("MyApp")
-        .config_file("application.toml")
-        .run()
-        .await?;
-
-    app.wait_for_shutdown().await?;
-    Ok(())
+    ChimeraApplication::new("MyApp")
+        .run_until_shutdown()  // 类似 Spring Boot 的 SpringApplication.run()
+        .await
 }
 ```
 
@@ -183,10 +181,10 @@ serde_json = "1"
 
 ### 基本使用流程
 
-1. **定义配置** - 使用 `@ConfigurationProperties` 绑定配置
+1. **定义配置** - 使用 `@ConfigurationProperties` 绑定配置，放在 `config/application.toml`
 2. **定义服务** - 使用 `@Component` 标记组件，`@autowired` 注入依赖
-3. **启动应用** - 调用 `ChimeraApplication::new().run()` 一行启动
-4. **使用服务** - 从 ApplicationContext 获取 Bean 并调用
+3. **启动应用** - 调用 `ChimeraApplication::new().run_until_shutdown()` 一行启动
+4. **使用服务** - 框架自动注册路由，或从 ApplicationContext 获取 Bean 并调用
 
 ## 项目结构
 
@@ -210,8 +208,35 @@ chimera/
 │   └── route.rs           # 路由映射宏
 └── examples/
     ├── app-demo/          # 依赖注入示例
+    │   ├── src/
+    │   └── config/        # 配置目录（推荐）
+    │       ├── application.toml
+    │       └── application-dev.toml
     └── web-demo/          # Web 框架示例
+        ├── src/
+        └── config/        # 配置目录（推荐）
+            └── application.toml
 ```
+
+### 配置文件目录结构
+
+类似 Spring Boot，推荐使用 `config/` 目录存放配置文件：
+
+```
+your-project/
+├── Cargo.toml
+├── config/                 # 配置目录（与 src 同级）
+│   ├── application.toml    # 默认配置
+│   ├── application-dev.toml   # 开发环境
+│   └── application-prod.toml  # 生产环境
+└── src/
+    └── main.rs
+```
+
+**自动查找规则**（无需手动指定）：
+1. 优先查找 `config/application.toml`
+2. 如果不存在，查找 `application.toml`
+3. 支持 Profile：`config/application-{profile}.toml`
 
 ## 核心注解说明
 
@@ -336,8 +361,7 @@ HTTP Request -> Router 匹配 -> 提取器解析参数 -> 调用 controller 方�
 - [ ] 添加文件上传支持（multipart/form-data）
 - [ ] 实现 Cookie 和 Session 提取器
 - [ ] 添加 WebSocket 支持
-- [ ] 实现全局异常处理器
-- [ ] 添加请求/响应拦截器
+- [x] 实现全局异常处理器
 - [ ] 实现类似 Spring Validate 的参数验证
 - [ ] 支持 OpenAPI/Swagger 文档自动生成
 - [ ] 添加速率限制中间件
