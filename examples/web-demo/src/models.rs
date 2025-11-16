@@ -53,25 +53,30 @@ pub struct RegisterUserRequest {
     #[validate(not_blank)]
     #[validate(length_min = 2)]
     #[validate(length_max = 20)]
+    #[serde(default)]
     pub username: String,
 
     /// 邮箱：不能为空，必须是有效的邮箱格式
     #[validate(not_blank)]
     #[validate(email)]
+    #[serde(default)]
     pub email: String,
 
     /// 密码：不能为空，最少8个字符
     #[validate(not_blank)]
     #[validate(length_min = 8)]
+    #[serde(default)]
     pub password: String,
 
     /// 年龄：必须在18-120之间
     #[validate(min = 18)]
     #[validate(max = 120)]
+    #[serde(default)]
     pub age: u32,
 
     /// 手机号：必须匹配中国手机号格式
     #[validate(pattern = r"^1[3-9]\d{9}$")]
+    #[serde(default)]
     pub phone: String,
 }
 
