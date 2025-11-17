@@ -1,10 +1,20 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Fields, Expr, ExprLit, Lit, Token};
+use syn::{parse_macro_input, DeriveInput, Data, Fields, Expr, ExprLit, Lit, Token, Type};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 
-// 定义验证参数
+// 检测类型是否是 Option<T>
+fn is_option(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            return segment.ident == "Option";
+        }
+    }
+    false
+}
+
+// 定���验证参数
 struct ValidationArgs {
     args: Punctuated<ValidationArg, Token![,]>,
 }
@@ -45,6 +55,9 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
                         let field_name_str = field_name.to_string();
                         let mut validations = Vec::new();
 
+                        // 检测字段是否是 Option 类型
+                        let is_option_type = is_option(&field.ty);
+
                         for attr in &field.attrs {
                             if attr.path().is_ident("validate") {
                                 let _ = attr.parse_nested_meta(|meta| {
@@ -69,25 +82,54 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
                                                 }
                                             }
 
-                                            if let Some(msg) = custom_message {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::not_blank_with_message(
-                                                            &self.#field_name,
-                                                            #field_name_str,
-                                                            Some(#msg)
-                                                        )
-                                                    );
-                                                });
+                                            if is_option_type {
+                                                // Option<T> 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        if let Some(ref __val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::not_blank_with_message(
+                                                                    __val,
+                                                                    #field_name_str,
+                                                                    Some(#msg)
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        if let Some(ref __val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::not_blank(
+                                                                    __val,
+                                                                    #field_name_str
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                }
                                             } else {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::not_blank(
-                                                            &self.#field_name,
-                                                            #field_name_str
-                                                        )
-                                                    );
-                                                });
+                                                // 非 Option 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::not_blank_with_message(
+                                                                &self.#field_name,
+                                                                #field_name_str,
+                                                                Some(#msg)
+                                                            )
+                                                        );
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::not_blank(
+                                                                &self.#field_name,
+                                                                #field_name_str
+                                                            )
+                                                        );
+                                                    });
+                                                }
                                             }
                                         }
                                         "not_empty" => {
@@ -107,25 +149,54 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
                                                 }
                                             }
 
-                                            if let Some(msg) = custom_message {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::not_empty_with_message(
-                                                            &self.#field_name,
-                                                            #field_name_str,
-                                                            Some(#msg)
-                                                        )
-                                                    );
-                                                });
+                                            if is_option_type {
+                                                // Option<T> 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        if let Some(ref __val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::not_empty_with_message(
+                                                                    __val,
+                                                                    #field_name_str,
+                                                                    Some(#msg)
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        if let Some(ref __val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::not_empty(
+                                                                    __val,
+                                                                    #field_name_str
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                }
                                             } else {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::not_empty(
-                                                            &self.#field_name,
-                                                            #field_name_str
-                                                        )
-                                                    );
-                                                });
+                                                // 非 Option 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::not_empty_with_message(
+                                                                &self.#field_name,
+                                                                #field_name_str,
+                                                                Some(#msg)
+                                                            )
+                                                        );
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::not_empty(
+                                                                &self.#field_name,
+                                                                #field_name_str
+                                                            )
+                                                        );
+                                                    });
+                                                }
                                             }
                                         }
                                         "email" => {
@@ -145,25 +216,54 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
                                                 }
                                             }
 
-                                            if let Some(msg) = custom_message {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::email_with_message(
-                                                            &self.#field_name,
-                                                            #field_name_str,
-                                                            Some(#msg)
-                                                        )
-                                                    );
-                                                });
+                                            if is_option_type {
+                                                // Option<T> 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        if let Some(ref __val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::email_with_message(
+                                                                    __val,
+                                                                    #field_name_str,
+                                                                    Some(#msg)
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        if let Some(ref __val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::email(
+                                                                    __val,
+                                                                    #field_name_str
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                }
                                             } else {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::email(
-                                                            &self.#field_name,
-                                                            #field_name_str
-                                                        )
-                                                    );
-                                                });
+                                                // 非 Option 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::email_with_message(
+                                                                &self.#field_name,
+                                                                #field_name_str,
+                                                                Some(#msg)
+                                                            )
+                                                        );
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::email(
+                                                                &self.#field_name,
+                                                                #field_name_str
+                                                            )
+                                                        );
+                                                    });
+                                                }
                                             }
                                         }
                                         "length" => {
@@ -206,29 +306,62 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
                                                 quote! { None }
                                             };
 
-                                            if let Some(msg) = custom_message {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::length_with_message(
-                                                            &self.#field_name,
-                                                            #field_name_str,
-                                                            #min_opt,
-                                                            #max_opt,
-                                                            Some(#msg)
-                                                        )
-                                                    );
-                                                });
+                                            if is_option_type {
+                                                // Option<T> 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        if let Some(ref __val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::length_with_message(
+                                                                    __val,
+                                                                    #field_name_str,
+                                                                    #min_opt,
+                                                                    #max_opt,
+                                                                    Some(#msg)
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        if let Some(ref __val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::length(
+                                                                    __val,
+                                                                    #field_name_str,
+                                                                    #min_opt,
+                                                                    #max_opt
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                }
                                             } else {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::length(
-                                                            &self.#field_name,
-                                                            #field_name_str,
-                                                            #min_opt,
-                                                            #max_opt
-                                                        )
-                                                    );
-                                                });
+                                                // 非 Option 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::length_with_message(
+                                                                &self.#field_name,
+                                                                #field_name_str,
+                                                                #min_opt,
+                                                                #max_opt,
+                                                                Some(#msg)
+                                                            )
+                                                        );
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::length(
+                                                                &self.#field_name,
+                                                                #field_name_str,
+                                                                #min_opt,
+                                                                #max_opt
+                                                            )
+                                                        );
+                                                    });
+                                                }
                                             }
                                         }
                                         "length_min" => {
@@ -304,29 +437,62 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
                                                 quote! { None }
                                             };
 
-                                            if let Some(msg) = custom_message {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::range_with_message(
-                                                            self.#field_name,
-                                                            #field_name_str,
-                                                            #min_opt,
-                                                            #max_opt,
-                                                            Some(#msg)
-                                                        )
-                                                    );
-                                                });
+                                            if is_option_type {
+                                                // Option<T> 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        if let Some(__val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::range_with_message(
+                                                                    __val,
+                                                                    #field_name_str,
+                                                                    #min_opt,
+                                                                    #max_opt,
+                                                                    Some(#msg)
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        if let Some(__val) = self.#field_name {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::range(
+                                                                    __val,
+                                                                    #field_name_str,
+                                                                    #min_opt,
+                                                                    #max_opt
+                                                                )
+                                                            );
+                                                        }
+                                                    });
+                                                }
                                             } else {
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::range(
-                                                            self.#field_name,
-                                                            #field_name_str,
-                                                            #min_opt,
-                                                            #max_opt
-                                                        )
-                                                    );
-                                                });
+                                                // 非 Option 类型
+                                                if let Some(msg) = custom_message {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::range_with_message(
+                                                                self.#field_name,
+                                                                #field_name_str,
+                                                                #min_opt,
+                                                                #max_opt,
+                                                                Some(#msg)
+                                                            )
+                                                        );
+                                                    });
+                                                } else {
+                                                    validations.push(quote! {
+                                                        validator.add_result(
+                                                            chimera_validator::ValidationRules::range(
+                                                                self.#field_name,
+                                                                #field_name_str,
+                                                                #min_opt,
+                                                                #max_opt
+                                                            )
+                                                        );
+                                                    });
+                                                }
                                             }
                                         }
                                         "min" => {
@@ -364,18 +530,92 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
                                             }
                                         }
                                         "pattern" => {
-                                            let value: Expr = meta.value()?.parse()?;
-                                            if let Expr::Lit(ExprLit { lit: Lit::Str(lit_str), .. }) = value {
-                                                let pattern = lit_str.value();
-                                                validations.push(quote! {
-                                                    validator.add_result(
-                                                        chimera_validator::ValidationRules::pattern(
-                                                            &self.#field_name,
-                                                            #field_name_str,
-                                                            #pattern
-                                                        )
-                                                    );
-                                                });
+                                            let mut pattern_str: Option<String> = None;
+                                            let mut custom_message: Option<String> = None;
+
+                                            // 尝试解析两种语法：
+                                            // 1. pattern = "regex" (旧语法，不支持 message)
+                                            // 2. pattern(regex = "regex", message = "msg") (新语法)
+                                            if meta.input.peek(syn::token::Paren) {
+                                                // 新语法：pattern(regex = "...", message = "...")
+                                                let content;
+                                                syn::parenthesized!(content in meta.input);
+                                                if let Ok(args) = content.parse::<ValidationArgs>() {
+                                                    for arg in args.args {
+                                                        if arg.name == "regex" || arg.name == "pattern" {
+                                                            if let Expr::Lit(ExprLit { lit: Lit::Str(lit_str), .. }) = arg.value {
+                                                                pattern_str = Some(lit_str.value());
+                                                            }
+                                                        } else if arg.name == "message" {
+                                                            if let Expr::Lit(ExprLit { lit: Lit::Str(lit_str), .. }) = arg.value {
+                                                                custom_message = Some(lit_str.value());
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } else if let Ok(value) = meta.value() {
+                                                // 旧语法：pattern = "regex"
+                                                let expr: Expr = value.parse()?;
+                                                if let Expr::Lit(ExprLit { lit: Lit::Str(lit_str), .. }) = expr {
+                                                    pattern_str = Some(lit_str.value());
+                                                }
+                                            }
+
+                                            if let Some(pattern) = pattern_str {
+                                                // 根据字段类型生成不同的验证代码
+                                                if is_option_type {
+                                                    // Option<T> 类型：只验证存在的值
+                                                    if let Some(msg) = custom_message {
+                                                        validations.push(quote! {
+                                                            if let Some(ref __val) = self.#field_name {
+                                                                validator.add_result(
+                                                                    chimera_validator::ValidationRules::pattern_with_message(
+                                                                        __val,
+                                                                        #field_name_str,
+                                                                        #pattern,
+                                                                        Some(#msg)
+                                                                    )
+                                                                );
+                                                            }
+                                                        });
+                                                    } else {
+                                                        validations.push(quote! {
+                                                            if let Some(ref __val) = self.#field_name {
+                                                                validator.add_result(
+                                                                    chimera_validator::ValidationRules::pattern(
+                                                                        __val,
+                                                                        #field_name_str,
+                                                                        #pattern
+                                                                    )
+                                                                );
+                                                            }
+                                                        });
+                                                    }
+                                                } else {
+                                                    // 非 Option 类型
+                                                    if let Some(msg) = custom_message {
+                                                        validations.push(quote! {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::pattern_with_message(
+                                                                    &self.#field_name,
+                                                                    #field_name_str,
+                                                                    #pattern,
+                                                                    Some(#msg)
+                                                                )
+                                                            );
+                                                        });
+                                                    } else {
+                                                        validations.push(quote! {
+                                                            validator.add_result(
+                                                                chimera_validator::ValidationRules::pattern(
+                                                                    &self.#field_name,
+                                                                    #field_name_str,
+                                                                    #pattern
+                                                                )
+                                                            );
+                                                        });
+                                                    }
+                                                }
                                             }
                                         }
                                         _ => {}

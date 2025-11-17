@@ -156,16 +156,21 @@ impl ValidationRules {
     
     /// 验证正则表达式
     pub fn pattern(value: &str, field: &str, pattern: &str) -> ValidationResult<()> {
+        Self::pattern_with_message(value, field, pattern, None)
+    }
+
+    /// 验证正则表达式（带自定义消息）
+    pub fn pattern_with_message(value: &str, field: &str, pattern: &str, custom_message: Option<&str>) -> ValidationResult<()> {
         let regex = Regex::new(pattern)
             .map_err(|e| ValidationError::new(format!("Invalid regex pattern: {}", e)))?;
-        
+
         if !regex.is_match(value) {
-            return Err(ValidationError::field_error(
-                field,
-                format!("{} must match pattern: {}", field, pattern),
-            ));
+            let message = custom_message
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{} must match pattern: {}", field, pattern));
+            return Err(ValidationError::field_error(field, message));
         }
-        
+
         Ok(())
     }
     

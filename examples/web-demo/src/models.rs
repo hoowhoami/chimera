@@ -129,9 +129,8 @@ pub struct RegisterUserRequest {
     pub age: u32,
 
     /// 手机号：必须匹配中国手机号格式
-    #[serde(default)]
     #[validate(not_blank(message = "手机号不能为空"))]
-    #[validate(pattern = r"^1[3-9]\d{9}$")]
+    #[validate(pattern(regex = r"^1[3-9]\d{9}$", message = "请输入有效的手机号"))]
     pub phone: String,
 }
 
@@ -160,3 +159,39 @@ pub struct CreateProductRequest {
     pub stock: u32,
 }
 
+/// 用户更新请求 - 演示所有验证器对 Option 类型的支持
+/// 使用 Option<T> 适合部分更新场景（PATCH），字段不存在时不更新
+///
+/// 所有验证器都支持 Option 类型：
+/// - None 值：跳过验证
+/// - Some(值)：正常验证该值
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct UpdateUserWithPhone {
+    /// 用户名：可选，如果提供则验证长度
+    #[validate(length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间"))]
+    pub username: Option<String>,
+
+    /// 邮箱：可选，如果提供则验证格式
+    #[validate(email(message = "请输入有效的邮箱地址"))]
+    pub email: Option<String>,
+
+    /// 手机号：可选，如果提供则验证格式（中国手机号）
+    /// 演示 Option<String> 使用 pattern 验证
+    #[validate(pattern(regex = r"^1[3-9]\d{9}$", message = "请输入有效的手机号"))]
+    pub phone: Option<String>,
+
+    /// 年龄：可选，如果提供则验证范围
+    /// 演示 Option<u32> 使用 range 验证
+    #[validate(range(min = 18, max = 120, message = "年龄必须在18-120岁之间"))]
+    pub age: Option<u32>,
+
+    /// 个人简介：可选，如果提供则不能为空
+    /// 演示 Option<String> 使用 not_empty 验证
+    #[validate(not_empty(message = "个人简介不能为空字符串"))]
+    pub bio: Option<String>,
+
+    /// 昵称：可选，如果提供则不能为空白
+    /// 演示 Option<String> 使用 not_blank 验证
+    #[validate(not_blank(message = "昵称不能为空白字符"))]
+    pub nickname: Option<String>,
+}

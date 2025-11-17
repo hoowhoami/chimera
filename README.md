@@ -262,7 +262,7 @@ struct UpdateUserRequest {
 | `length(min = X, max = Y, message = "...")` | 字符串长度 | `#[validate(length(min = 2, max = 20, message = "长度2-20"))]` |
 | `email(message = "...")` | 邮箱格式 | `#[validate(email(message = "邮箱格式错误"))]` |
 | `range(min = X, max = Y, message = "...")` | 数值范围 | `#[validate(range(min = 18, max = 120, message = "18-120"))]` |
-| `pattern = "regex"` | 正则匹配 | `#[validate(pattern = r"^1[3-9]\d{9}$")]` |
+| `pattern(regex = "...", message = "...")` | 正则匹配 | `#[validate(pattern(regex = r"^1[3-9]\\d{9}$", message = "手机号格式错误"))]` |
 
 #### 支持的验证提取器
 
