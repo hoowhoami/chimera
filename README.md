@@ -28,7 +28,12 @@
   - `FormData<T>` - 从表单数据提取（类似 @ModelAttribute）
   - `ValidatedFormData<T>` - 自动验证的表单数据（类似 @Valid @ModelAttribute）
   - `RequestHeaders` - 提取 HTTP 请求头（类似 @RequestHeader）
-- **参数验证** - 基于 `chimera_validator::Validate` 的自动验证
+- **参数验证** - 基于 `chimera_validator::Validate` 的自动验证，支持自定义验证消息
+  - **两种验证模式**：
+    - 模式1: 使用 `#[serde(default)]` - 字段缺失时使用默认值，然后由 validator 验证（推荐，类似 Spring Boot）
+    - 模式2: 使用 `Option<T>` - 字段缺失时为 None，由 validator 验证非空
+  - **丰富的验证规则**：`not_blank`, `length`, `email`, `range`, `pattern` 等
+  - **统一错误响应** - 所有验证错误自动转换为统一的 JSON 格式
 - **分层错误处理** - 提取器、中间件、业务逻辑的分层错误处理
 - **全局异常处理** - 类似 Spring Boot 的 @ControllerAdvice
 - **类型安全** - 编译时检查所有参数类型
@@ -163,30 +168,40 @@ async fn main() -> ApplicationResult<()> {
 
 ### 参数验证
 
-使用 `ValidatedRequestBody` 自动验证请求参数（类似 Spring Boot 的 `@Valid @RequestBody`）：
+Chimera 提供了强大的参数验证功能，类似 Spring Boot 的 `@Valid` + JSR-303/380 验证。支持两种验证模式：
+
+#### 模式1: 使用 `#[serde(default)]` + 验证（推荐）
+
+字段缺失时使用默认值，然后由 validator 验证。这种方式行为更接近 Spring Boot，错误信息更友好：
 
 ```rust
-use chimera_validator::{Validate, Length, Email, Range};
+use chimera_validator::Validate;
 use chimera_web::extractors::ValidatedRequestBody;
 
 // 1. 定义带验证规则的请求模型
 #[derive(Deserialize, Validate)]
-struct CreateUserRequest {
+struct RegisterUserRequest {
+    /// 字段缺失时使用空字符串，然后由 validator 检测
+    #[serde(default)]
+    #[validate(not_blank(message = "用户名不能为空"))]
     #[validate(length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间"))]
     username: String,
 
-    #[validate(email(message = "邮箱格式不正确"))]
+    #[serde(default)]
+    #[validate(not_blank(message = "邮箱不能为空"))]
+    #[validate(email(message = "请输入有效的邮箱地址"))]
     email: String,
 
-    #[validate(range(min = 18, max = 120, message = "年龄必须在18-120之间"))]
-    age: u8,
+    #[serde(default)]
+    #[validate(range(min = 18, max = 120, message = "年龄必须在18-120岁之间"))]
+    age: u32,
 }
 
 // 2. 使用 ValidatedRequestBody 自动验证
 #[controller]
 impl UserController {
     #[post_mapping("/register")]
-    async fn register(&self, ValidatedRequestBody(req): ValidatedRequestBody<CreateUserRequest>) -> impl IntoResponse {
+    async fn register(&self, ValidatedRequestBody(req): ValidatedRequestBody<RegisterUserRequest>) -> impl IntoResponse {
         // 如果执行到这里，说明验证已通过
         // 验证失败会自动返回 400 Bad Request 和详细的验证错误信息
         let user = self.user_service.create(req).await;
@@ -195,21 +210,109 @@ impl UserController {
 }
 ```
 
-**验证失败时的响应示例**：
+**请求示例**（缺失字段）：
+```bash
+curl -X POST http://localhost:3000/api/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"a"}'  # 缺失 email 和 age
+```
+
+**响应**（验证错误）：
 ```json
 {
   "timestamp": "2024-01-15T10:30:00Z",
   "status": 400,
   "error": "ValidationError",
   "message": "Validation failed",
-  "path": "/api/users/register",
+  "path": "/api/register",
   "details": {
     "field_errors": {
       "username": ["用户名长度必须在2-20个字符之间"],
-      "email": ["邮箱格式不正确"],
-      "age": ["年龄必须在18-120之间"]
+      "email": ["邮箱不能为空", "请输入有效的邮箱地址"],
+      "age": ["年龄必须在18-120岁之间"]
     }
   }
+}
+```
+
+#### 模式2: 使用 `Option<T>` + 验证
+
+适合部分更新场景（PATCH），字段不存在时不更新：
+
+```rust
+#[derive(Deserialize, Validate)]
+struct UpdateUserRequest {
+    /// 字段不存在：不更新
+    /// 字段存在：验证其值
+    #[validate(not_blank(message = "用户名不能为空"))]
+    #[validate(length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间"))]
+    username: Option<String>,
+
+    #[validate(email(message = "请输入有效的邮箱地址"))]
+    email: Option<String>,
+}
+```
+
+#### 支持的验证规则
+
+| 验证规则 | 说明 | 示例 |
+|---------|------|------|
+| `not_blank(message = "...")` | 字符串非空白 | `#[validate(not_blank(message = "不能为空"))]` |
+| `not_empty(message = "...")` | 字符串非空 | `#[validate(not_empty(message = "不能为空"))]` |
+| `length(min = X, max = Y, message = "...")` | 字符串长度 | `#[validate(length(min = 2, max = 20, message = "长度2-20"))]` |
+| `email(message = "...")` | 邮箱格式 | `#[validate(email(message = "邮箱格式错误"))]` |
+| `range(min = X, max = Y, message = "...")` | 数值范围 | `#[validate(range(min = 18, max = 120, message = "18-120"))]` |
+| `pattern = "regex"` | 正则匹配 | `#[validate(pattern = r"^1[3-9]\d{9}$")]` |
+
+#### 支持的验证提取器
+
+Chimera 提供了三种自动验证提取器：
+
+| 提取器 | 用途 | 类似 Spring Boot |
+|--------|------|----------------|
+| `ValidatedRequestBody<T>` | JSON 请求体验证 | `@Valid @RequestBody` |
+| `ValidatedFormData<T>` | 表单数据验证 | `@Valid @ModelAttribute` |
+| `ValidatedRequestParam<T>` | 查询参数验证 | `@Valid @RequestParam` |
+
+**示例：表单验证**
+```rust
+#[derive(Deserialize, Validate)]
+struct LoginForm {
+    #[serde(default)]
+    #[validate(not_blank(message = "用户名不能为空"))]
+    username: String,
+
+    #[serde(default)]
+    #[validate(length(min = 6, message = "密码长度至少为6个字符"))]
+    password: String,
+}
+
+#[post_mapping("/login")]
+async fn login(&self, ValidatedFormData(form): ValidatedFormData<LoginForm>) -> impl IntoResponse {
+    // 表单验证已通过
+    ResponseEntity::ok(json!({"message": "登录成功"}))
+}
+```
+
+**示例：查询参数验证**
+```rust
+#[derive(Deserialize, Validate)]
+struct SearchQuery {
+    #[serde(default)]
+    #[validate(length(min = 2, max = 50, message = "搜索关键词长度2-50"))]
+    keyword: String,
+
+    #[serde(default = "default_page")]
+    #[validate(range(min = 1, max = 1000, message = "页码1-1000"))]
+    page: u32,
+}
+
+fn default_page() -> u32 { 1 }
+
+#[get_mapping("/search")]
+async fn search(&self, ValidatedRequestParam(query): ValidatedRequestParam<SearchQuery>) -> impl IntoResponse {
+    // 查询参数验证已通过
+    ResponseEntity::ok(json!({"results": []}))
 }
 ```
 

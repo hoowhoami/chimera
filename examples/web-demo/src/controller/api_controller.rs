@@ -2,14 +2,16 @@ use chimera_core::prelude::*;
 use chimera_core_macros::Component;
 use chimera_web_macros::{Controller, controller, get_mapping, post_mapping, put_mapping, request_mapping};
 use chimera_web::prelude::*;
-use chimera_web::extractors::{PathVariable, RequestBody, RequestParam, FormData, RequestHeaders, ValidatedRequestBody};
+use chimera_web::extractors::{PathVariable, RequestBody, RequestParam, FormData, RequestHeaders, ValidatedRequestBody, ValidatedFormData};
 use chimera_web::exception_handler::WebError;
 use serde_json::json;
 use std::sync::Arc;
 
 use crate::config::AppConfig;
 use crate::service::UserService;
-use crate::models::{CreateUserRequest, UpdateUserRequest, SearchQuery, LoginForm, CommentForm, RegisterUserRequest, CreateProductRequest};
+use crate::models::{CreateUserRequest, UpdateUserRequest, SearchQuery, LoginForm, CommentForm,
+                  RegisterUserRequest, CreateProductRequest, ValidatedLoginForm,
+                  ValidatedCommentForm, ValidatedSearchQuery};
 use crate::error::BusinessError;
 
 #[derive(Controller, Component, Clone)]
@@ -231,6 +233,72 @@ impl ApiController {
             "authorization": authorization,
             "user_agent": user_agent,
             "note": "组合使用 PathVariable 和 RequestHeaders 提取器"
+        }))
+    }
+
+    // ========== 测试验证提取器的端点 ==========
+
+    /// POST /api/test/validated-form
+    /// 测试 ValidatedFormData 提取器 - 表单验证
+    ///
+    /// 使用 application/x-www-form-urlencoded 格式提交表单
+    ///
+    /// 示例（缺失字段测试）:
+    /// curl -X POST http://localhost:3000/api/test/validated-form \
+    ///   -H "Content-Type: application/x-www-form-urlencoded" \
+    ///   -d "username="
+    ///
+    /// 示例（正常提交）:
+    /// curl -X POST http://localhost:3000/api/test/validated-form \
+    ///   -H "Content-Type: application/x-www-form-urlencoded" \
+    ///   -d "username=testuser&password=password123&remember_me=true"
+    #[post_mapping("/test/validated-form")]
+    async fn test_validated_form(&self, ValidatedFormData(form): ValidatedFormData<ValidatedLoginForm>) -> impl IntoResponse {
+        ResponseEntity::ok(json!({
+            "message": "表单验证通过",
+            "username": form.username,
+            "remember_me": form.remember_me.unwrap_or(false),
+            "note": "使用 ValidatedFormData 提取器，自动验证表单数据"
+        }))
+    }
+
+    /// POST /api/test/validated-comment
+    /// 测试 ValidatedFormData 提取器 - 评论表单验证
+    ///
+    /// 示例（评分超出范围）:
+    /// curl -X POST http://localhost:3000/api/test/validated-comment \
+    ///   -H "Content-Type: application/x-www-form-urlencoded" \
+    ///   -d "author=张三&content=这是一条评论内容&rating=10"
+    #[post_mapping("/test/validated-comment")]
+    async fn test_validated_comment(&self, ValidatedFormData(comment): ValidatedFormData<ValidatedCommentForm>) -> impl IntoResponse {
+        ResponseEntity::ok(json!({
+            "message": "评论提交成功",
+            "author": comment.author,
+            "content": comment.content,
+            "rating": comment.rating,
+            "note": "使用 ValidatedFormData 提取器验证评论表单"
+        }))
+    }
+
+    /// GET /api/test/validated-search
+    /// 测试 ValidatedRequestParam 提取器 - 查询参数验证
+    ///
+    /// 示例（缺失关键词）:
+    /// curl "http://localhost:3000/api/test/validated-search?page=1&size=20"
+    ///
+    /// 示例（页码超出范围）:
+    /// curl "http://localhost:3000/api/test/validated-search?keyword=test&page=9999&size=20"
+    ///
+    /// 示例（正常请求）:
+    /// curl "http://localhost:3000/api/test/validated-search?keyword=rust&page=2&size=50"
+    #[get_mapping("/test/validated-search")]
+    async fn test_validated_search(&self, ValidatedRequestParam(query): ValidatedRequestParam<ValidatedSearchQuery>) -> impl IntoResponse {
+        ResponseEntity::ok(json!({
+            "message": "搜索参数验证通过",
+            "keyword": query.keyword,
+            "page": query.page,
+            "size": query.size,
+            "note": "使用 ValidatedRequestParam 提取器验证查询参数"
         }))
     }
 
