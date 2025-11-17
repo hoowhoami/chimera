@@ -11,4 +11,4 @@ pub use validator::*;
 pub use plugin::*;
 
 // 重新导出宏
-pub use chimera_validator_macros::{Validate, valid};
+pub use chimera_validator_macros::Validate;

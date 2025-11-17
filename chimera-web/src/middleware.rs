@@ -12,7 +12,7 @@ use axum::{
 use futures_util::FutureExt;
 use std::{sync::Arc, time::Instant};
 
-use crate::exception_handler::GlobalExceptionHandlerRegistry;
+use crate::exception_handler::{GlobalExceptionHandlerRegistry, WebError};
 
 /// 请求日志中间件
 pub async fn request_logging(req: Request, next: Next) -> Response {
@@ -79,15 +79,25 @@ pub async fn global_exception_handler(
 
             tracing::error!(path = %path, error = %error_msg, "Handler panicked");
 
-            // 创建一个简单的Error来表示panic
-            let panic_error = std::io::Error::new(std::io::ErrorKind::Other, error_msg);
+            // 将 panic 转换为 WebError
+            let web_error = WebError::Internal(error_msg);
 
             // 使用异常处理器注册表处理panic
-            let error_response = registry.handle_error(&panic_error, &path).await;
+            let error_response = registry.handle_error(&web_error, &path).await;
 
             return error_response.into_response();
         }
     };
+
+    // 检查响应中是否包含 WebError Extension
+    // 如果有，说明这是一个 WebError 返回的响应，需要使用全局异常处理器
+    if let Some(web_error) = response.extensions().get::<Arc<WebError>>() {
+        tracing::debug!("Found WebError in response extensions, using global exception handler");
+
+        // 使用全局异常处理器处理错误
+        let error_response = registry.handle_error(web_error.as_ref(), &path).await;
+        return error_response.into_response();
+    }
 
     // 检查是否是错误响应（状态码4xx或5xx）
     if response.status().is_client_error() || response.status().is_server_error() {

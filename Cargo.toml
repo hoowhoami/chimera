@@ -21,6 +21,7 @@ repository = "https://github.com/hoowhoami/chimera"
 [workspace.dependencies]
 # 依赖注入相关
 chimera-core = { path = "chimera-core" }
+chimera-validator = { path = "chimera-validator" }
 
 # 异步运行时
 tokio = { version = "1.40", features = ["full"] }

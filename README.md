@@ -23,13 +23,18 @@
   - `Autowired<T>` - 从 DI 容器注入 Bean（类似 @Autowired）
   - `PathVariable<T>` - 从路径参数提取（类似 @PathVariable）
   - `RequestBody<T>` - 从 JSON body 反序列化（类似 @RequestBody）
+  - `ValidatedRequestBody<T>` - 自动验证的 JSON body（类似 @Valid @RequestBody）
   - `RequestParam<T>` - 从 query 参数提取（类似 @RequestParam）
+  - `ValidatedRequestParam<T>` - 自动验证的 query 参数（类似 @Valid @RequestParam）
   - `FormData<T>` - 从表单数据提取（类似 @ModelAttribute）
+  - `ValidatedFormData<T>` - 自动验证的表单数据（类似 @Valid @ModelAttribute）
   - `RequestHeaders` - 提取 HTTP 请求头（类似 @RequestHeader）
+- **参数验证** - 基于 `chimera_validator::Validate` 的自动验证
+- **分层错误处理** - 提取器、中间件、业务逻辑的分层错误处理
+- **全局异常处理** - 类似 Spring Boot 的 @ControllerAdvice
 - **类型安全** - 编译时检查所有参数类型
 - **依赖注入集成** - Controller 无缝访问 DI 容器中的 Bean
 - **灵活组合** - 在一个方法中使用多个提取器
-- **自动错误处理** - 提取失败自动返回合适的 HTTP 状态码
 
 ### 依赖注入 (Dependency Injection)
 
@@ -155,6 +160,152 @@ async fn main() -> ApplicationResult<()> {
         .run_until_shutdown()  // 类似 Spring Boot 的 SpringApplication.run()
         .await
 }
+```
+
+### 参数验证
+
+使用 `ValidatedRequestBody` 自动验证请求参数（类似 Spring Boot 的 `@Valid @RequestBody`）：
+
+```rust
+use chimera_validator::{Validate, Length, Email, Range};
+use chimera_web::extractors::ValidatedRequestBody;
+
+// 1. 定义带验证规则的请求模型
+#[derive(Deserialize, Validate)]
+struct CreateUserRequest {
+    #[validate(length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间"))]
+    username: String,
+
+    #[validate(email(message = "邮箱格式不正确"))]
+    email: String,
+
+    #[validate(range(min = 18, max = 120, message = "年龄必须在18-120之间"))]
+    age: u8,
+}
+
+// 2. 使用 ValidatedRequestBody 自动验证
+#[controller]
+impl UserController {
+    #[post_mapping("/register")]
+    async fn register(&self, ValidatedRequestBody(req): ValidatedRequestBody<CreateUserRequest>) -> impl IntoResponse {
+        // 如果执行到这里，说明验证已通过
+        // 验证失败会自动返回 400 Bad Request 和详细的验证错误信息
+        let user = self.user_service.create(req).await;
+        ResponseEntity::created(user)
+    }
+}
+```
+
+**验证失败时的响应示例**：
+```json
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "status": 400,
+  "error": "ValidationError",
+  "message": "Validation failed",
+  "path": "/api/users/register",
+  "details": {
+    "field_errors": {
+      "username": ["用户名长度必须在2-20个字符之间"],
+      "email": ["邮箱格式不正确"],
+      "age": ["年龄必须在18-120之间"]
+    }
+  }
+}
+```
+
+### 全局异常处理
+
+类似 Spring Boot 的 `@ControllerAdvice`，实现自定义异常处理器：
+
+```rust
+use chimera_web::exception_handler::{GlobalExceptionHandler, WebError, ErrorResponse};
+use chimera_web_macros::ExceptionHandler;
+
+// 1. 定义业务错误类型
+#[derive(Error, Debug)]
+pub enum BusinessError {
+    #[error("User not found: {0}")]
+    UserNotFound(String),
+
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+}
+
+// 2. 实现全局异常处理器
+#[derive(ExceptionHandler, Component)]
+#[bean("businessExceptionHandler")]
+pub struct BusinessExceptionHandler {
+    #[value("app.debug", default = false)]
+    debug_mode: bool,
+}
+
+#[async_trait]
+impl GlobalExceptionHandler for BusinessExceptionHandler {
+    fn name(&self) -> &str {
+        "BusinessExceptionHandler"
+    }
+
+    fn priority(&self) -> i32 {
+        10 // 高优先级
+    }
+
+    fn can_handle(&self, error: &WebError) -> bool {
+        matches!(error, WebError::UserDefined(_))
+    }
+
+    async fn handle_error(&self, error: &WebError, request_path: &str) -> Option<ErrorResponse> {
+        match error {
+            WebError::UserDefined(e) => {
+                if let Some(business_error) = e.downcast_ref::<BusinessError>() {
+                    let (status_code, error_type) = match business_error {
+                        BusinessError::UserNotFound(_) => {
+                            (StatusCode::NOT_FOUND, "UserNotFound")
+                        }
+                        BusinessError::DatabaseError(_) => {
+                            (StatusCode::INTERNAL_SERVER_ERROR, "DatabaseError")
+                        }
+                    };
+
+                    Some(ErrorResponse::new(
+                        status_code,
+                        error_type.to_string(),
+                        business_error.to_string(),
+                        request_path.to_string(),
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+// 3. 在 Controller 中使用业务错误
+#[controller]
+impl UserController {
+    #[get_mapping("/:id")]
+    async fn get_user(&self, PathVariable(id): PathVariable<u32>) -> impl IntoResponse {
+        match self.user_service.find_by_id(id).await {
+            Some(user) => ResponseEntity::ok(user),
+            None => {
+                let error = BusinessError::UserNotFound(id.to_string());
+                WebError::UserDefined(Box::new(error)).into_response()
+            }
+        }
+    }
+}
+```
+
+**错误处理层级**（类似 Axum 的分层架构）：
+
+1. **提取器层级** - 请求参数解析错误（JSON、Path、Query、Form 等）
+2. **中间件层级** - 认证、授权、限流等错误
+3. **业务逻辑层级** - Handler 函数中的业务错误
+4. **全局处理层级** - 统一捕获和转换所有错误
+5. **框架底层层级** - HTTP 服务器、连接错误
+
 ```
 
 ### 添加依赖
@@ -362,7 +513,7 @@ HTTP Request -> Router 匹配 -> 提取器解析参数 -> 调用 controller 方�
 - [ ] 实现 Cookie 和 Session 提取器
 - [ ] 添加 WebSocket 支持
 - [x] 实现全局异常处理器
-- [ ] 实现类似 Spring Validate 的参数验证
+- [x] 实现类似 Spring Validate 的参数验证
 - [ ] 支持 OpenAPI/Swagger 文档自动生成
 - [ ] 添加速率限制中间件
 - [ ] 支持 gRPC

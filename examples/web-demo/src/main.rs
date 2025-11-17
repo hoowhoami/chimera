@@ -5,6 +5,7 @@ mod config;
 mod models;
 mod service;
 mod controller;
+mod error;
 
 // 导入异常处理器模块
 mod handlers {

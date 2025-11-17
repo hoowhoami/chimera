@@ -1,6 +1,14 @@
 //! 全局异常处理模块
 //!
 //! 提供类似 Spring Boot @ControllerAdvice 的全局异常处理功能
+//!
+//! ## Axum 错误处理层级
+//!
+//! 1. **提取器层级** - 请求参数解析错误（JSON、Path、Query等）
+//! 2. **中间件层级** - 认证、限流等中间件错误
+//! 3. **业务逻辑层级** - Handler 函数内的业务错误
+//! 4. **全局处理层级** - 统一捕获和转换所有错误
+//! 5. **框架底层层级** - HTTP 服务器、连接等底层错误
 
 use async_trait::async_trait;
 use axum::{
@@ -11,25 +19,197 @@ use axum::{
 use chimera_core::{ApplicationContext, Container};
 use serde_json::Value;
 use std::sync::Arc;
+use std::collections::HashMap;
 use thiserror::Error;
 
-/// 全局异常处理器 trait - 类似Spring的@ControllerAdvice
+// ============================================================================
+// 🔥 Web 层错误类型 - 分层设计
+// ============================================================================
+
+/// Web 层错误类型
+///
+/// 按照 Axum 错误处理层级设计，只包含 Web 层的错误：
+/// 1. **提取器层级** - JSON、Path、Query 等解析错误
+/// 2. **中间件层级** - 认证、限流等中间件错误
+/// 3. **框架底层** - HTTP 服务器、连接等底层错误
+///
+/// **注意**：业务逻辑错误由用户自己定义，通过实现 `std::error::Error` 和 `IntoResponse` 即可
+#[derive(Error, Debug)]
+pub enum WebError {
+    // ========== 1. 提取器层级错误 ==========
+    /// JSON 解析错误 - 400 Bad Request
+    #[error("JSON parse error: {message}")]
+    JsonParse {
+        message: String,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
+
+    /// 参数验证错误 - 400 Bad Request
+    #[error("Validation failed: {message}")]
+    Validation {
+        message: String,
+        /// 字段级别的验证错误详情
+        field_errors: Option<HashMap<String, Vec<String>>>,
+    },
+
+    /// 路径参数解析错误 - 400 Bad Request
+    #[error("Invalid path parameter: {message}")]
+    PathParse { message: String },
+
+    /// 查询参数解析错误 - 400 Bad Request
+    #[error("Invalid query parameter: {message}")]
+    QueryParse { message: String },
+
+    /// 表单数据解析错误 - 400 Bad Request
+    #[error("Invalid form data: {message}")]
+    FormParse { message: String },
+
+    // ========== 2. 中间件层级错误 ==========
+    /// 认证失败 - 401 Unauthorized
+    #[error("Authentication failed: {0}")]
+    Authentication(String),
+
+    /// 授权失败 - 403 Forbidden
+    #[error("Authorization failed: {0}")]
+    Authorization(String),
+
+    /// 限流错误 - 429 Too Many Requests
+    #[error("Rate limit exceeded: {0}")]
+    RateLimit(String),
+
+    // ========== 3. 框架底层错误 ==========
+    /// 内部服务器错误 - 500 Internal Server Error
+    #[error("Internal server error: {0}")]
+    Internal(String),
+
+    /// 包装用户自定义的业务错误
+    ///
+    /// 用户的业务错误需要实现 `std::error::Error + Send + Sync + 'static`
+    /// 框架会通过全局异常处理器来处理这些错误
+    #[error("Business error: {0}")]
+    UserDefined(Box<dyn std::error::Error + Send + Sync + 'static>),
+}
+
+impl WebError {
+    /// 获取错误对应的 HTTP 状态码
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            // 提取器层级 - 400 Bad Request
+            WebError::JsonParse { .. } => StatusCode::BAD_REQUEST,
+            WebError::Validation { .. } => StatusCode::BAD_REQUEST,
+            WebError::PathParse { .. } => StatusCode::BAD_REQUEST,
+            WebError::QueryParse { .. } => StatusCode::BAD_REQUEST,
+            WebError::FormParse { .. } => StatusCode::BAD_REQUEST,
+
+            // 中间件层级
+            WebError::Authentication(_) => StatusCode::UNAUTHORIZED,
+            WebError::Authorization(_) => StatusCode::FORBIDDEN,
+            WebError::RateLimit(_) => StatusCode::TOO_MANY_REQUESTS,
+
+            // 框架底层
+            WebError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+
+            // 用户自定义错误 - 默认返回 500，用户可以通过全局异常处理器自定义
+            WebError::UserDefined(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    /// 获取错误详情（用于 JSON 响应）
+    pub fn details(&self) -> Option<Value> {
+        match self {
+            WebError::Validation { field_errors, .. } => {
+                field_errors.as_ref().map(|errors| serde_json::to_value(errors).unwrap())
+            }
+            _ => None,
+        }
+    }
+}
+
+/// 实现 IntoResponse，使 WebError 可以直接作为 Handler 返回值
+///
+/// 注意：这个实现会将 WebError 存储在响应的 Extension 中，
+/// 以便全局异常处理中间件可以提取并使用自定义的异常处理器
+impl IntoResponse for WebError {
+    fn into_response(self) -> Response {
+        let status = self.status_code();
+
+        // 创建一个简单的错误响应
+        let error_response = ErrorResponse {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            status: status.as_u16(),
+            error: status.canonical_reason().unwrap_or("Unknown Error").to_string(),
+            message: self.to_string(),
+            path: "unknown".to_string(), // 在中间件中会被替换
+            trace: None,
+            details: self.details(),
+        };
+
+        // 将 WebError 存储在响应的 Extension 中，供中间件使用
+        let mut response = (status, Json(error_response)).into_response();
+        response.extensions_mut().insert(Arc::new(self));
+        response
+    }
+}
+
+/// 全局异常处理器 trait - 类似 Spring 的 @ControllerAdvice
+///
+/// 用户可以实现此 trait 来自定义异常处理逻辑
+///
+/// # 示例
+///
+/// ```ignore
+/// use chimera_web::prelude::*;
+///
+/// #[derive(Component)]
+/// pub struct MyExceptionHandler;
+///
+/// #[async_trait]
+/// impl GlobalExceptionHandler for MyExceptionHandler {
+///     fn name(&self) -> &str {
+///         "MyExceptionHandler"
+///     }
+///
+///     fn can_handle(&self, error: &WebError) -> bool {
+///         // 判断是否可以处理该错误
+///         matches!(error, WebError::UserDefined(_))
+///     }
+///
+///     async fn handle_error(
+///         &self,
+///         error: &WebError,
+///         request_path: &str,
+///     ) -> Option<ErrorResponse> {
+///         // 自定义错误处理逻辑
+///         Some(ErrorResponse::new(
+///             StatusCode::BAD_REQUEST,
+///             "Custom Error".to_string(),
+///             error.to_string(),
+///             request_path.to_string(),
+///         ))
+///     }
+/// }
+/// ```
 #[async_trait]
 pub trait GlobalExceptionHandler: Send + Sync {
     fn name(&self) -> &str;
+
+    /// 优先级，数字越小优先级越高
     fn priority(&self) -> i32 {
         100
-    } // 数字越小优先级越高
+    }
 
     /// 处理特定类型的异常
+    ///
+    /// 返回 `Some(ErrorResponse)` 表示已处理，返回 `None` 表示不处理
     async fn handle_error(
         &self,
-        error: &(dyn std::error::Error + Send + Sync),
+        error: &WebError,
         request_path: &str,
     ) -> Option<ErrorResponse>;
 
     /// 判断是否可以处理该异常类型
-    fn can_handle(&self, error: &(dyn std::error::Error + Send + Sync)) -> bool;
+    fn can_handle(&self, error: &WebError) -> bool;
 }
 
 /// 标准错误响应格式
@@ -77,78 +257,9 @@ impl IntoResponse for ErrorResponse {
     }
 }
 
-/// 应用级异常类型定义
-#[derive(Error, Debug)]
-pub enum ApplicationError {
-    #[error("Business logic error: {0}")]
-    BusinessError(String),
-
-    #[error("Validation failed: {0}")]
-    ValidationError(String),
-
-    #[error("Resource not found: {0}")]
-    NotFound(String),
-
-    #[error("Unauthorized access: {0}")]
-    Unauthorized(String),
-
-    #[error("Forbidden: {0}")]
-    Forbidden(String),
-
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-
-    #[error("External service error: {0}")]
-    ExternalServiceError(String),
-
-    #[error("Request timeout: {0}")]
-    Timeout(String),
-
-    #[error("Rate limit exceeded: {0}")]
-    RateLimitExceeded(String),
-}
-
-impl IntoResponse for ApplicationError {
-    fn into_response(self) -> Response {
-        let error_response = ErrorResponse::new(
-            self.status_code(),
-            self.error_type().to_string(),
-            self.to_string(),
-            "".to_string(),
-        );
-        (self.status_code(), Json(error_response)).into_response()
-    }
-}
-
-impl ApplicationError {
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            Self::BusinessError(_) => StatusCode::BAD_REQUEST,
-            Self::ValidationError(_) => StatusCode::BAD_REQUEST,
-            Self::NotFound(_) => StatusCode::NOT_FOUND,
-            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            Self::Forbidden(_) => StatusCode::FORBIDDEN,
-            Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::ExternalServiceError(_) => StatusCode::BAD_GATEWAY,
-            Self::Timeout(_) => StatusCode::REQUEST_TIMEOUT,
-            Self::RateLimitExceeded(_) => StatusCode::TOO_MANY_REQUESTS,
-        }
-    }
-
-    pub fn error_type(&self) -> &'static str {
-        match self {
-            Self::BusinessError(_) => "Business Error",
-            Self::ValidationError(_) => "Validation Error",
-            Self::NotFound(_) => "Not Found",
-            Self::Unauthorized(_) => "Unauthorized",
-            Self::Forbidden(_) => "Forbidden",
-            Self::DatabaseError(_) => "Database Error",
-            Self::ExternalServiceError(_) => "External Service Error",
-            Self::Timeout(_) => "Request Timeout",
-            Self::RateLimitExceeded(_) => "Rate Limit Exceeded",
-        }
-    }
-}
+// ============================================================================
+// 🔥 全局异常处理器注册表
+// ============================================================================
 
 /// 异常处理器注册表
 pub struct GlobalExceptionHandlerRegistry {
@@ -179,9 +290,13 @@ impl GlobalExceptionHandlerRegistry {
     }
 
     /// 处理异常，返回标准化的错误响应
+    ///
+    /// 处理流程：
+    /// 1. 依次尝试用户注册的异常处理器
+    /// 2. 如果没有处理器处理，使用框架默认处理
     pub async fn handle_error(
         &self,
-        error: &(dyn std::error::Error + Send + Sync),
+        error: &WebError,
         request_path: &str,
     ) -> ErrorResponse {
         // 依次尝试各个处理器
@@ -198,75 +313,34 @@ impl GlobalExceptionHandlerRegistry {
             }
         }
 
-        // 默认处理器
+        // 默认处理器 - 框架提供的默认错误响应
         self.default_error_response(error, request_path)
     }
 
+    /// 框架默认的错误响应
     fn default_error_response(
         &self,
-        error: &(dyn std::error::Error + Send + Sync),
+        error: &WebError,
         request_path: &str,
     ) -> ErrorResponse {
-        tracing::error!(error = %error, path = request_path, "Unhandled error");
+        let status = error.status_code();
 
-        // 尝试转换为ApplicationError
-        if let Some(source) = error.source() {
-            if let Some(app_error) = source.downcast_ref::<ApplicationError>() {
-                return ErrorResponse::new(
-                    app_error.status_code(),
-                    app_error.error_type().to_string(),
-                    app_error.to_string(),
-                    request_path.to_string(),
-                );
-            }
+        tracing::error!(
+            error = %error,
+            path = request_path,
+            status = %status.as_u16(),
+            "Error handled by default handler"
+        );
+
+        ErrorResponse {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            status: status.as_u16(),
+            error: status.canonical_reason().unwrap_or("Unknown Error").to_string(),
+            message: error.to_string(),
+            path: request_path.to_string(),
+            trace: None,
+            details: error.details(),
         }
-
-        // 尝试直接转换（通过字符串匹配检测ApplicationError类型的特征）
-        let error_str = error.to_string();
-        if error_str.contains("ValidationError") || error_str.contains("BusinessError") {
-            return ErrorResponse::new(
-                StatusCode::BAD_REQUEST,
-                "Application Error".to_string(),
-                error_str,
-                request_path.to_string(),
-            );
-        }
-
-        // 处理Axum内置的拒绝类型（通过错误信息检测）
-        if error_str.contains("JsonRejection") || error_str.contains("Invalid JSON") {
-            return ErrorResponse::new(
-                StatusCode::BAD_REQUEST,
-                "Bad Request".to_string(),
-                format!("Invalid JSON: {}", error_str),
-                request_path.to_string(),
-            );
-        }
-
-        if error_str.contains("PathRejection") || error_str.contains("Invalid path") {
-            return ErrorResponse::new(
-                StatusCode::BAD_REQUEST,
-                "Bad Request".to_string(),
-                format!("Invalid path parameter: {}", error_str),
-                request_path.to_string(),
-            );
-        }
-
-        if error_str.contains("QueryRejection") || error_str.contains("Invalid query") {
-            return ErrorResponse::new(
-                StatusCode::BAD_REQUEST,
-                "Bad Request".to_string(),
-                format!("Invalid query parameter: {}", error_str),
-                request_path.to_string(),
-            );
-        }
-
-        // 默认的500错误
-        ErrorResponse::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal Server Error".to_string(),
-            format!("{}", error),
-            request_path.to_string(),
-        )
     }
 }
 

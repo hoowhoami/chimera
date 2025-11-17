@@ -1,16 +1,16 @@
 use chimera_core::prelude::*;
 use chimera_core_macros::Component;
-use chimera_validator::valid;
 use chimera_web_macros::{Controller, controller, get_mapping, post_mapping, put_mapping, request_mapping};
 use chimera_web::prelude::*;
-use chimera_web::exception_handler::ApplicationError;
-use chimera_web::extractors::{Autowired, PathVariable, RequestBody, RequestParam, FormData, RequestHeaders};
+use chimera_web::extractors::{Autowired, PathVariable, RequestBody, RequestParam, FormData, RequestHeaders, ValidatedRequestBody};
+use chimera_web::exception_handler::WebError;
 use serde_json::json;
 use std::sync::Arc;
 
 use crate::config::AppConfig;
 use crate::service::UserService;
 use crate::models::{CreateUserRequest, UpdateUserRequest, SearchQuery, LoginForm, CommentForm, RegisterUserRequest, CreateProductRequest};
+use crate::error::BusinessError;
 
 #[derive(Controller, Component, Clone)]
 #[route("/api")]
@@ -242,23 +242,30 @@ impl ApiController {
     #[get_mapping("/test/business-error")]
     async fn test_business_error(&self) -> impl IntoResponse {
         // 触发业务异常，会被 BusinessExceptionHandler 处理
-        Err::<ResponseEntity<()>, _>(
-            ApplicationError::ValidationError(
-                "用户名必须长度在2-20个字符之间".to_string()
-            )
-        )
+        let error = BusinessError::ValidationError(
+            "用户名必须长度在2-20个字符之间".to_string()
+        );
+        // 将业务错误包装到 WebError 中
+        WebError::UserDefined(Box::new(error)).into_response()
+    }
+
+    /// GET /api/test/user-not-found
+    /// 测试用户不存在错误
+    #[get_mapping("/test/user-not-found")]
+    async fn test_user_not_found(&self) -> impl IntoResponse {
+        let error = BusinessError::UserNotFound("user_123".to_string());
+        WebError::UserDefined(Box::new(error)).into_response()
     }
 
     /// GET /api/test/database-error
     /// 测试数据库异常处理器
     #[get_mapping("/test/database-error")]
     async fn test_database_error(&self) -> impl IntoResponse {
-        // 模拟数据库连接错误，会被 DatabaseExceptionHandler 处理
-        Err::<ResponseEntity<()>, _>(
-            ApplicationError::DatabaseError(
-                "Database connection timeout after 30 seconds".to_string()
-            )
-        )
+        // 模拟数据库连接错误
+        let error = BusinessError::DatabaseError(
+            "Database connection timeout after 30 seconds".to_string()
+        );
+        WebError::UserDefined(Box::new(error)).into_response()
     }
 
     /// GET /api/test/generic-error
@@ -340,10 +347,10 @@ impl ApiController {
     // ========== 参数验证示例端点 ==========
 
     /// POST /api/register
-    /// 用户注册 - 演示参数验证功能
+    /// 用户注册 - 演示自动验证
     ///
-    /// 手动调用 validate() 方法验证请求参数
-    /// 如果验证失败，返回 400 错误和详细的验证错误信息
+    /// 使用 ValidatedRequestBody 自动验证请求参数
+    /// 如果验证失败，会自动返回 400 错误和详细的验证错误信息
     ///
     /// 示例请求体：
     /// ```json
@@ -356,15 +363,8 @@ impl ApiController {
     /// }
     /// ```
     #[post_mapping("/register")]
-    #[valid]
-    async fn user_register(&self, RequestBody(request): RequestBody<RegisterUserRequest>) -> impl IntoResponse {
-        // 手动验证请求参数
-        use chimera_validator::Validate;
-        if let Err(e) = request.validate() {
-            return ApplicationError::ValidationError(format!("{:?}", e)).into_response();
-        }
-
-        // 如果执行到这里，说明验证已通过
+    async fn user_register(&self, ValidatedRequestBody(request): ValidatedRequestBody<RegisterUserRequest>) -> impl IntoResponse {
+        // ValidatedRequestBody 已经自动验证了参数，如果执行到这里，说明验证已通过
         ResponseEntity::ok(json!({
             "message": "用户注册成功",
             "username": request.username,
@@ -372,7 +372,7 @@ impl ApiController {
             "age": request.age,
             "phone": request.phone,
             "note": "所有参数验证已通过"
-        })).into_response()
+        }))
     }
 
     /// POST /api/products
@@ -390,13 +390,8 @@ impl ApiController {
     /// }
     /// ```
     #[post_mapping("/products")]
-    async fn create_product(&self, RequestBody(request): RequestBody<CreateProductRequest>) -> impl IntoResponse {
-        // 手动验证请求参数
-        use chimera_validator::Validate;
-        if let Err(e) = request.validate() {
-            return ApplicationError::ValidationError(format!("{:?}", e)).into_response();
-        }
-
+    async fn create_product(&self, ValidatedRequestBody(request): ValidatedRequestBody<CreateProductRequest>) -> impl IntoResponse {
+        // ValidatedRequestBody 已经自动验证了参数
         ResponseEntity::ok(json!({
             "message": "商品创建成功",
             "product": {
@@ -407,6 +402,6 @@ impl ApiController {
                 "stock": request.stock
             },
             "note": "商品信息验证通过"
-        })).into_response()
+        }))
     }
 }

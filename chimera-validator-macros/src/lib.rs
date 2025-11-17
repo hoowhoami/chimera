@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Fields, Expr, ExprLit, Lit, ItemFn, FnArg, Pat, Type};
+use syn::{parse_macro_input, DeriveInput, Data, Fields, Expr, ExprLit, Lit};
 
 #[proc_macro_derive(Validate, attributes(validate))]
 pub fn derive_validate(input: TokenStream) -> TokenStream {
@@ -161,75 +161,6 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 
                 validator.build()
             }
-        }
-    };
-
-    TokenStream::from(expanded)
-}
-
-/// `#[valid]` 宏 - 自动验证方法参数
-///
-/// 用于 controller 方法，自动验证实现了 Validate trait 的参数
-///
-/// # 示例
-///
-/// ```rust
-/// #[post_mapping("/users")]
-/// #[valid]
-/// async fn create_user(
-///     RequestBody(request): RequestBody<CreateUserRequest>
-/// ) -> impl IntoResponse {
-///     // request 已经通过验证
-/// }
-/// ```
-#[proc_macro_attribute]
-pub fn valid(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as ItemFn);
-    let _fn_name = &input.sig.ident;
-    let _fn_vis = &input.vis;
-    let fn_sig = &input.sig;
-    let fn_block = &input.block;
-    let fn_attrs = &input.attrs;
-
-    // 提取方法参数并生成验证语句
-    let mut validation_stmts = Vec::new();
-
-    for arg in input.sig.inputs.iter() {
-        if let FnArg::Typed(pat_type) = arg {
-            // 检查参数类型是否是 RequestBody<T>
-            if let Type::Path(type_path) = &*pat_type.ty {
-                let type_str = quote!(#type_path).to_string();
-
-                // 如果是 RequestBody 类型，提取内部值并验证
-                if type_str.contains("RequestBody") {
-                    // 匹配 RequestBody(inner) 模式
-                    if let Pat::TupleStruct(tuple_struct) = &*pat_type.pat {
-                        if let Some(Pat::Ident(inner_ident)) = tuple_struct.elems.first() {
-                            let inner_name = &inner_ident.ident;
-                            validation_stmts.push(quote! {
-                                if let Err(e) = chimera_validator::Validate::validate(&#inner_name) {
-                                    use chimera_web::prelude::*;
-                                    return chimera_web::exception_handler::ApplicationError::ValidationError(
-                                        format!("{:?}", e)
-                                    ).into_response();
-                                }
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 生成新的函数
-    let expanded = quote! {
-        #(#fn_attrs)*
-        #fn_sig {
-            // 验证参数
-            #(#validation_stmts)*
-
-            // 执行原方法体
-            #fn_block
         }
     };
 

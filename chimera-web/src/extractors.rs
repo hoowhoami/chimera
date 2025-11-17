@@ -1,6 +1,11 @@
 //! 自定义提取器
 //!
-//! 集成 Chimera 依赖注入的提取器
+//! 集成 Chimera 依赖注入和验证的提取器
+//!
+//! ## 提取器层级
+//!
+//! 按照 Axum 错误处理层级，提取器错误属于第一层级（提取器层级）
+//! 所有提取器错误都会被转换为 `WebError`，然后由全局异常处理器处理
 
 use axum::{
     async_trait,
@@ -12,6 +17,8 @@ use axum::{
 use chimera_core::prelude::*;
 use std::sync::Arc;
 use serde::de::DeserializeOwned;
+
+use crate::exception_handler::WebError;
 
 /// Bean 提取器 - 从应用上下文中提取 Bean
 ///
@@ -200,16 +207,19 @@ impl IntoResponse for PathVariableError {
 
 /// RequestBody 提取器 - 类似 Spring Boot 的 @RequestBody
 ///
-/// 自动从 JSON 请求体中反序列化对象
+/// 自动从 JSON 请求体中反序列化对象（不验证）
 ///
 /// 用法示例：
 /// ```ignore
-/// #[post_mapping("/users")]
-/// async fn create_user(&self, RequestBody(user): RequestBody<CreateUserRequest>) -> impl IntoResponse {
-///     // user 已经从 JSON 反序列化
-///     ResponseEntity::created(user)
+/// use chimera_web::prelude::*;
+///
+/// #[post_mapping("/echo")]
+/// async fn echo(&self, RequestBody(data): RequestBody<serde_json::Value>) -> impl IntoResponse {
+///     ResponseEntity::ok(data)
 /// }
 /// ```
+///
+/// 如果需要自动验证，请使用 `ValidRequestBody`
 pub struct RequestBody<T>(pub T);
 
 #[async_trait]
@@ -218,37 +228,107 @@ where
     T: DeserializeOwned,
     S: Send + Sync,
 {
-    type Rejection = RequestBodyError;
+    type Rejection = WebError;
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
-        let Json(value) = Json::<T>::from_request(req, state)
+        let Json(data) = Json::<T>::from_request(req, state)
             .await
-            .map_err(|e| RequestBodyError::JsonParseError(e.to_string()))?;
+            .map_err(|e| {
+                let error_msg = e.to_string();
+                tracing::debug!(error = %error_msg, "JSON parse error");
 
-        Ok(RequestBody(value))
+                WebError::JsonParse {
+                    message: error_msg.clone(),
+                    source: Some(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        error_msg,
+                    ))),
+                }
+            })?;
+
+        Ok(RequestBody(data))
     }
 }
 
-/// RequestBody 提取错误
-#[derive(Debug)]
-pub enum RequestBodyError {
-    JsonParseError(String),
-}
+/// ValidatedRequestBody 提取器 - 类似 Spring Boot 的 @Valid @RequestBody
+///
+/// 自动从 JSON 请求体中反序列化对象并执行验证
+///
+/// 要求 T 实现 `chimera_validator::Validate` trait
+///
+/// 用法示例：
+/// ```ignore
+/// use chimera_web::prelude::*;
+/// use chimera_validator::Validate;
+///
+/// #[derive(Deserialize, Validate)]
+/// struct CreateUserRequest {
+///     #[validate(length_min = 2)]
+///     name: String,
+///     #[validate(email)]
+///     email: String,
+/// }
+///
+/// #[post_mapping("/users")]
+/// async fn create_user(&self, ValidatedRequestBody(user): ValidatedRequestBody<CreateUserRequest>) -> impl IntoResponse {
+///     // user 已经从 JSON 反序列化并通过验证
+///     ResponseEntity::created(user)
+/// }
+/// ```
+pub struct ValidatedRequestBody<T>(pub T);
 
-impl IntoResponse for RequestBodyError {
-    fn into_response(self) -> Response {
-        match self {
-            RequestBodyError::JsonParseError(msg) => {
-                (StatusCode::BAD_REQUEST, format!("Invalid request body: {}", msg))
-                    .into_response()
+#[async_trait]
+impl<S, T> FromRequest<S> for ValidatedRequestBody<T>
+where
+    T: DeserializeOwned + chimera_validator::Validate,
+    S: Send + Sync,
+{
+    type Rejection = WebError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        // 1. 先尝试解析 JSON
+        let Json(data) = Json::<T>::from_request(req, state)
+            .await
+            .map_err(|e| {
+                let error_msg = e.to_string();
+                tracing::debug!(error = %error_msg, "JSON parse error");
+
+                WebError::JsonParse {
+                    message: error_msg.clone(),
+                    source: Some(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        error_msg,
+                    ))),
+                }
+            })?;
+
+        // 2. 执行验证
+        data.validate().map_err(|e| {
+            tracing::debug!(error = ?e, "Validation error");
+
+            match e {
+                chimera_validator::ValidationError::FieldErrors(field_errors) => {
+                    WebError::Validation {
+                        message: "Validation failed".to_string(),
+                        field_errors: Some(field_errors),
+                    }
+                }
+                chimera_validator::ValidationError::ValidationFailed(msg) => {
+                    WebError::Validation {
+                        message: msg,
+                        field_errors: None,
+                    }
+                }
             }
-        }
+        })?;
+
+        Ok(ValidatedRequestBody(data))
     }
 }
 
 /// RequestParam 提取器 - 类似 Spring Boot 的 @RequestParam
 ///
-/// 自动从 Query 参数中提取和反序列化对象
+/// 自动从 Query 参数中提取和反序列化对象（不验证）
 ///
 /// 用法示例：
 /// ```ignore
@@ -258,6 +338,8 @@ impl IntoResponse for RequestBodyError {
 ///     ResponseEntity::ok(results)
 /// }
 /// ```
+///
+/// 如果需要自动验证，请使用 `ValidRequestParam`
 pub struct RequestParam<T>(pub T);
 
 #[async_trait]
@@ -266,37 +348,99 @@ where
     T: DeserializeOwned,
     S: Send + Sync,
 {
-    type Rejection = RequestParamError;
+    type Rejection = WebError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let axum::extract::Query(value) = axum::extract::Query::<T>::from_request_parts(parts, state)
             .await
-            .map_err(|e| RequestParamError::ParseError(e.to_string()))?;
+            .map_err(|e| {
+                let error_msg = e.to_string();
+                tracing::debug!(error = %error_msg, "Query parse error");
+
+                WebError::QueryParse {
+                    message: error_msg,
+                }
+            })?;
 
         Ok(RequestParam(value))
     }
 }
 
-/// RequestParam 提取错误
-#[derive(Debug)]
-pub enum RequestParamError {
-    ParseError(String),
-}
+/// ValidatedRequestParam 提取器 - 类似 Spring Boot 的 @Valid @RequestParam
+///
+/// 自动从 Query 参数中提取和反序列化对象并执行验证
+///
+/// 要求 T 实现 `chimera_validator::Validate` trait
+///
+/// 用法示例：
+/// ```ignore
+/// use chimera_web::prelude::*;
+/// use chimera_validator::Validate;
+///
+/// #[derive(Deserialize, Validate)]
+/// struct SearchQuery {
+///     #[validate(length_min = 1)]
+///     keyword: String,
+///     #[validate(range_min = 1, range_max = 100)]
+///     page_size: Option<u32>,
+/// }
+///
+/// #[get_mapping("/search")]
+/// async fn search(&self, ValidatedRequestParam(query): ValidatedRequestParam<SearchQuery>) -> impl IntoResponse {
+///     // query 已经通过验证
+///     ResponseEntity::ok(query)
+/// }
+/// ```
+pub struct ValidatedRequestParam<T>(pub T);
 
-impl IntoResponse for RequestParamError {
-    fn into_response(self) -> Response {
-        match self {
-            RequestParamError::ParseError(msg) => {
-                (StatusCode::BAD_REQUEST, format!("Invalid query parameters: {}", msg))
-                    .into_response()
+#[async_trait]
+impl<S, T> FromRequestParts<S> for ValidatedRequestParam<T>
+where
+    T: DeserializeOwned + chimera_validator::Validate,
+    S: Send + Sync,
+{
+    type Rejection = WebError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // 1. 先尝试解析查询参数
+        let axum::extract::Query(data) = axum::extract::Query::<T>::from_request_parts(parts, state)
+            .await
+            .map_err(|e| {
+                let error_msg = e.to_string();
+                tracing::debug!(error = %error_msg, "Query parse error");
+
+                WebError::QueryParse {
+                    message: error_msg,
+                }
+            })?;
+
+        // 2. 执行验证
+        data.validate().map_err(|e| {
+            tracing::debug!(error = ?e, "Validation error");
+
+            match e {
+                chimera_validator::ValidationError::FieldErrors(field_errors) => {
+                    WebError::Validation {
+                        message: "Validation failed".to_string(),
+                        field_errors: Some(field_errors),
+                    }
+                }
+                chimera_validator::ValidationError::ValidationFailed(msg) => {
+                    WebError::Validation {
+                        message: msg,
+                        field_errors: None,
+                    }
+                }
             }
-        }
+        })?;
+
+        Ok(ValidatedRequestParam(data))
     }
 }
 
-/// FormData 提取器 - 类似 Spring Boot 的 @RequestParam 处理表单
+/// FormData 提取器 - 类似 Spring Boot 的 @ModelAttribute
 ///
-/// 自动从 application/x-www-form-urlencoded 或 multipart/form-data 请求体中提取数据
+/// 自动从 application/x-www-form-urlencoded 或 multipart/form-data 请求体中提取数据（不验证）
 ///
 /// 用法示例：
 /// ```ignore
@@ -312,6 +456,8 @@ impl IntoResponse for RequestParamError {
 ///     ResponseEntity::ok(form)
 /// }
 /// ```
+///
+/// 如果需要自动验证，请使用 `ValidatedFormData`
 pub struct FormData<T>(pub T);
 
 #[async_trait]
@@ -320,31 +466,93 @@ where
     T: DeserializeOwned,
     S: Send + Sync,
 {
-    type Rejection = FormDataError;
+    type Rejection = WebError;
 
     async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
         let axum::extract::Form(value) = axum::extract::Form::<T>::from_request(req, state)
             .await
-            .map_err(|e| FormDataError::ParseError(e.to_string()))?;
+            .map_err(|e| {
+                let error_msg = e.to_string();
+                tracing::debug!(error = %error_msg, "Form parse error");
+
+                WebError::FormParse {
+                    message: error_msg,
+                }
+            })?;
 
         Ok(FormData(value))
     }
 }
 
-/// FormData 提取错误
-#[derive(Debug)]
-pub enum FormDataError {
-    ParseError(String),
-}
+/// ValidatedFormData 提取器 - 类似 Spring Boot 的 @Valid @ModelAttribute
+///
+/// 自动从 application/x-www-form-urlencoded 或 multipart/form-data 请求体中提取数据并执行验证
+///
+/// 要求 T 实现 `chimera_validator::Validate` trait
+///
+/// 用法示例：
+/// ```ignore
+/// use chimera_web::prelude::*;
+/// use chimera_validator::Validate;
+///
+/// #[derive(Deserialize, Validate)]
+/// struct RegisterForm {
+///     #[validate(length_min = 2)]
+///     username: String,
+///     #[validate(email)]
+///     email: String,
+/// }
+///
+/// #[post_mapping("/register")]
+/// async fn register(&self, ValidatedFormData(form): ValidatedFormData<RegisterForm>) -> impl IntoResponse {
+///     // form 已经通过验证
+///     ResponseEntity::ok(form)
+/// }
+/// ```
+pub struct ValidatedFormData<T>(pub T);
 
-impl IntoResponse for FormDataError {
-    fn into_response(self) -> Response {
-        match self {
-            FormDataError::ParseError(msg) => {
-                (StatusCode::BAD_REQUEST, format!("Invalid form data: {}", msg))
-                    .into_response()
+#[async_trait]
+impl<S, T> FromRequest<S> for ValidatedFormData<T>
+where
+    T: DeserializeOwned + chimera_validator::Validate,
+    S: Send + Sync,
+{
+    type Rejection = WebError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        // 1. 先尝试解析表单数据
+        let axum::extract::Form(data) = axum::extract::Form::<T>::from_request(req, state)
+            .await
+            .map_err(|e| {
+                let error_msg = e.to_string();
+                tracing::debug!(error = %error_msg, "Form parse error");
+
+                WebError::FormParse {
+                    message: error_msg,
+                }
+            })?;
+
+        // 2. 执行验证
+        data.validate().map_err(|e| {
+            tracing::debug!(error = ?e, "Validation error");
+
+            match e {
+                chimera_validator::ValidationError::FieldErrors(field_errors) => {
+                    WebError::Validation {
+                        message: "Validation failed".to_string(),
+                        field_errors: Some(field_errors),
+                    }
+                }
+                chimera_validator::ValidationError::ValidationFailed(msg) => {
+                    WebError::Validation {
+                        message: msg,
+                        field_errors: None,
+                    }
+                }
             }
-        }
+        })?;
+
+        Ok(ValidatedFormData(data))
     }
 }
 
@@ -431,3 +639,5 @@ impl IntoResponse for RequestHeaderError {
         }
     }
 }
+
+

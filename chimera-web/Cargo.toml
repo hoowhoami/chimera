@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 # Chimera 核心
 chimera-core = { workspace = true }
+chimera-validator = { workspace = true }
 
 # Web 框架 - Axum
 axum = "0.7"
