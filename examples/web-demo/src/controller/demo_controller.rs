@@ -28,12 +28,6 @@ impl DemoController {
             },
 
             "available_extractors": {
-                "autowired": {
-                    "name": "Autowired<T>",
-                    "description": "从 DI 容器注入 Bean（类似 @Autowired）",
-                    "example": "Autowired(service): Autowired<UserService>",
-                    "spring_boot": "@Autowired UserService userService"
-                },
                 "request_body": {
                     "name": "RequestBody<T>",
                     "description": "从 JSON body 反序列化（类似 @RequestBody）",
@@ -89,14 +83,14 @@ impl DemoController {
             "comparison_with_spring_boot": {
                 "spring_boot": {
                     "controller": "@RestController @RequestMapping(\"/api\")",
-                    "autowired": "@Autowired UserService userService",
+                    "field_injection": "@Autowired UserService userService",
                     "request_body": "@RequestBody User user",
                     "path_variable": "@PathVariable Long id",
                     "request_param": "@RequestParam String name"
                 },
                 "chimera": {
                     "controller": "#[derive(Controller)] #[route(\"/api\")]",
-                    "autowired": "Autowired(userService): Autowired<UserService>",
+                    "field_injection": "#[autowired] user_service: Arc<UserService>",
                     "request_body": "RequestBody(user): RequestBody<User>",
                     "path_variable": "PathVariable(id): PathVariable<u32>",
                     "request_param": "RequestParam(name): RequestParam<String>"

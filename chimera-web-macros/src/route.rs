@@ -10,7 +10,7 @@ use syn::{parse_macro_input, ItemImpl, ImplItem, ImplItemFn, Attribute, FnArg, T
 ///
 /// 支持的方法签名：
 /// 1. 无参数：`async fn handler(&self) -> impl IntoResponse`
-/// 2. 带提取器：`async fn handler(&self, Autowired(svc): Autowired<Service>, PathVariable(id): PathVariable<u32>) -> impl IntoResponse`
+/// 2. 带提取器：`async fn handler(&self, PathVariable(id): PathVariable<u32>, RequestBody(data): RequestBody<User>) -> impl IntoResponse`
 pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemImpl);
     let self_ty = &input.self_ty;

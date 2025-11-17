@@ -10,139 +10,13 @@
 use axum::{
     async_trait,
     extract::{FromRequest, FromRequestParts, Path, Request},
-    http::{request::Parts, StatusCode, HeaderMap},
+    http::{request::Parts, HeaderMap},
     response::{IntoResponse, Response},
-    Json, Extension,
+    Json,
 };
-use chimera_core::prelude::*;
-use std::sync::Arc;
 use serde::de::DeserializeOwned;
 
 use crate::exception_handler::WebError;
-
-/// Bean 提取器 - 从应用上下文中提取 Bean
-///
-/// 用法示例：
-/// ```ignore
-/// async fn handler(Bean(service): Bean<UserService>) -> impl IntoResponse {
-///     service.do_something()
-/// }
-/// ```
-pub struct Bean<T>(pub Arc<T>)
-where
-    T: Send + Sync + 'static;
-
-/// Autowired 提取器 - 类似 Spring Boot 的 @Autowired
-///
-/// 这与 Bean 功能完全相同，提供更符合 Spring Boot 习惯的命名
-///
-/// 用法示例：
-/// ```ignore
-/// async fn handler(Autowired(service): Autowired<UserService>) -> impl IntoResponse {
-///     service.do_something()
-/// }
-/// ```
-pub struct Autowired<T>(pub Arc<T>)
-where
-    T: Send + Sync + 'static;
-
-#[async_trait]
-impl<S, T> FromRequestParts<S> for Bean<T>
-where
-    T: Send + Sync + 'static,
-    S: Send + Sync,
-{
-    type Rejection = BeanExtractionError;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let Extension(context) = Extension::<Arc<ApplicationContext>>::from_request_parts(parts, state)
-            .await
-            .map_err(|_| BeanExtractionError::NotFound("ApplicationContext not found in extensions".to_string()))?;
-
-        let bean = context
-            .get_bean_by_type::<T>()
-            .await
-            .map_err(|e| BeanExtractionError::NotFound(e.to_string()))?;
-
-        Ok(Bean(bean))
-    }
-}
-
-#[async_trait]
-impl<S, T> FromRequestParts<S> for Autowired<T>
-where
-    T: Send + Sync + 'static,
-    S: Send + Sync,
-{
-    type Rejection = BeanExtractionError;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let Extension(context) = Extension::<Arc<ApplicationContext>>::from_request_parts(parts, state)
-            .await
-            .map_err(|_| BeanExtractionError::NotFound("ApplicationContext not found in extensions".to_string()))?;
-
-        let bean = context
-            .get_bean_by_type::<T>()
-            .await
-            .map_err(|e| BeanExtractionError::NotFound(e.to_string()))?;
-
-        Ok(Autowired(bean))
-    }
-}
-
-/// Bean 提取错误
-#[derive(Debug)]
-pub enum BeanExtractionError {
-    NotFound(String),
-}
-
-impl IntoResponse for BeanExtractionError {
-    fn into_response(self) -> Response {
-        match self {
-            BeanExtractionError::NotFound(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("Bean not found: {}", msg))
-                    .into_response()
-            }
-        }
-    }
-}
-
-/// 可选 Bean 提取器 - 如果 Bean 不存在则返回 None
-///
-/// 用法示例：
-/// ```ignore
-/// async fn handler(OptionalBean(service): OptionalBean<MetricsService>) -> impl IntoResponse {
-///     if let Some(svc) = service {
-///         svc.track("request");
-///     }
-/// }
-/// ```
-pub struct OptionalBean<T>(pub Option<Arc<T>>)
-where
-    T: Send + Sync + 'static;
-
-#[async_trait]
-impl<S, T> FromRequestParts<S> for OptionalBean<T>
-where
-    T: Send + Sync + 'static,
-    S: Send + Sync,
-{
-    type Rejection = std::convert::Infallible;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let context = Extension::<Arc<ApplicationContext>>::from_request_parts(parts, state)
-            .await
-            .ok()
-            .map(|Extension(ctx)| ctx);
-
-        let bean = match context {
-            Some(ctx) => ctx.get_bean_by_type::<T>().await.ok(),
-            None => None,
-        };
-
-        Ok(OptionalBean(bean))
-    }
-}
 
 /// PathVariable 提取器 - 类似 Spring Boot 的 @PathVariable
 ///
@@ -195,13 +69,13 @@ pub enum PathVariableError {
 
 impl IntoResponse for PathVariableError {
     fn into_response(self) -> Response {
-        match self {
-            PathVariableError::ParseError(msg) => {
-                // 类型转换失败 - 参数格式错误，返回 400
-                (StatusCode::BAD_REQUEST, format!("Invalid path parameter: {}", msg))
-                    .into_response()
-            }
-        }
+        // 转换为 WebError 以便全局异常处理器可以捕获
+        let web_error = match self {
+            PathVariableError::ParseError(msg) => WebError::PathParse {
+                message: format!("Invalid path parameter: {}", msg),
+            },
+        };
+        web_error.into_response()
     }
 }
 
@@ -627,16 +501,12 @@ pub enum RequestHeaderError {
 
 impl IntoResponse for RequestHeaderError {
     fn into_response(self) -> Response {
-        match self {
-            RequestHeaderError::HeaderNotFound(msg) => {
-                (StatusCode::BAD_REQUEST, format!("Header not found: {}", msg))
-                    .into_response()
-            }
-            RequestHeaderError::InvalidHeaderValue(msg) => {
-                (StatusCode::BAD_REQUEST, format!("Invalid header value: {}", msg))
-                    .into_response()
-            }
-        }
+        // 转换为 WebError 以便全局异常处理器可以捕获
+        let web_error = match self {
+            RequestHeaderError::HeaderNotFound(msg) => WebError::Internal(format!("Header not found: {}", msg)),
+            RequestHeaderError::InvalidHeaderValue(msg) => WebError::Internal(format!("Invalid header value: {}", msg)),
+        };
+        web_error.into_response()
     }
 }
 

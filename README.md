@@ -20,7 +20,6 @@
 - **@Controller** - 通过注解定义控制器，自动注册路由
 - **自动路由** - 无需手动配置，方法注解自动生成路由
 - **参数注入** - Spring Boot 风格的提取器：
-  - `Autowired<T>` - 从 DI 容器注入 Bean（类似 @Autowired）
   - `PathVariable<T>` - 从路径参数提取（类似 @PathVariable）
   - `RequestBody<T>` - 从 JSON body 反序列化（类似 @RequestBody）
   - `ValidatedRequestBody<T>` - 自动验证的 JSON body（类似 @Valid @RequestBody）
@@ -429,10 +428,12 @@ your-project/
 |--------|------|------------------|
 | `PathVariable<T>` | 提取路径参数 | `@PathVariable` |
 | `RequestBody<T>` | 提取 JSON body | `@RequestBody` |
+| `ValidatedRequestBody<T>` | 提取并验证 JSON body | `@Valid @RequestBody` |
 | `RequestParam<T>` | 提取 query 参数 | `@RequestParam` |
+| `ValidatedRequestParam<T>` | 提取并验证 query 参数 | `@Valid @RequestParam` |
 | `FormData<T>` | 提取表单数据 | `@ModelAttribute` |
+| `ValidatedFormData<T>` | 提取并验证表单数据 | `@Valid @ModelAttribute` |
 | `RequestHeaders` | 提取请求头 | `@RequestHeader` |
-| `Autowired<T>` | 注入 Bean | `@Autowired` |
 
 ## 示例场景
 

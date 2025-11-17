@@ -2,7 +2,7 @@ use chimera_core::prelude::*;
 use chimera_core_macros::Component;
 use chimera_web_macros::{Controller, controller, get_mapping, post_mapping, put_mapping, request_mapping};
 use chimera_web::prelude::*;
-use chimera_web::extractors::{Autowired, PathVariable, RequestBody, RequestParam, FormData, RequestHeaders, ValidatedRequestBody};
+use chimera_web::extractors::{PathVariable, RequestBody, RequestParam, FormData, RequestHeaders, ValidatedRequestBody};
 use chimera_web::exception_handler::WebError;
 use serde_json::json;
 use std::sync::Arc;
@@ -105,19 +105,18 @@ impl ApiController {
         ResponseEntity::ok(users)
     }
 
-    // ========== 使用 Autowired 注入其他服务 ==========
+    // ========== 使用 Controller 字段注入的服务 ==========
 
-    /// GET /api/demo/autowired
-    /// 演示在 handler 中使用 Autowired 注入其他服务
-    #[get_mapping("/demo/autowired")]
-    async fn demo_autowired(&self, Autowired(service): Autowired<UserService>) -> impl IntoResponse {
-        // 这里的 service 是通过 Autowired 提取器注入的
-        // 虽然 controller 本身已经有 user_service，但这展示了提取器的用法
-        let users = service.list_users();
+    /// GET /api/demo/service
+    /// 演示使用 Controller 字段注入的服务
+    #[get_mapping("/demo/service")]
+    async fn demo_service(&self) -> impl IntoResponse {
+        // 直接使用 controller 字段中注入的 user_service
+        let users = self.user_service.list_users();
         ResponseEntity::ok(json!({
-            "message": "演示 Autowired 提取器",
+            "message": "演示 Controller 字段注入",
             "users": users,
-            "note": "service 参数是通过 Autowired<UserService> 提取器注入的"
+            "note": "user_service 是通过 Controller 字段的 #[autowired] 注入的"
         }))
     }
 
