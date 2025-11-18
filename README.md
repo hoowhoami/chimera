@@ -614,10 +614,7 @@ HTTP Request -> Router 匹配 -> 提取器解析参数 -> 调用 controller 方�
 
 ### Web 框架
 - [ ] 添加文件上传支持（multipart/form-data）
-- [x] 实现 Cookie 和 Session 提取器
 - [ ] 添加 WebSocket 支持
-- [x] 实现全局异常处理器
-- [x] 实现类似 Spring Validate 的参数验证
 - [ ] 支持 OpenAPI/Swagger 文档自动生成
 - [ ] 支持 gRPC
 
