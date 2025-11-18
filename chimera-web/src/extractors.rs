@@ -510,4 +510,191 @@ impl IntoResponse for RequestHeaderError {
     }
 }
 
+/// Cookies 提取器 - 从请求中提取所有 Cookie
+///
+/// 自动从 HTTP 请求头中解析并提取所有 Cookie
+///
+/// 用法示例：
+/// ```ignore
+/// use chimera_web::prelude::*;
+///
+/// #[get_mapping("/check")]
+/// async fn check_cookies(&self, Cookies(cookies): Cookies) -> impl IntoResponse {
+///     if let Some(session_id) = cookies.get("session_id") {
+///         ResponseEntity::ok(format!("Session ID: {}", session_id))
+///     } else {
+///         ResponseEntity::ok("No session found")
+///     }
+/// }
+/// ```
+pub struct Cookies(pub std::collections::HashMap<String, String>);
+
+impl Cookies {
+    /// 获取指定名称的 Cookie 值
+    pub fn get(&self, name: &str) -> Option<&String> {
+        self.0.get(name)
+    }
+
+    /// 获取内部 HashMap
+    pub fn into_inner(self) -> std::collections::HashMap<String, String> {
+        self.0
+    }
+
+    /// 获取内部 HashMap 的引用
+    pub fn as_ref(&self) -> &std::collections::HashMap<String, String> {
+        &self.0
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for Cookies
+where
+    S: Send + Sync,
+{
+    type Rejection = CookieError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let mut cookies = std::collections::HashMap::new();
+
+        // 从 Cookie header 中提取所有 cookie
+        if let Some(cookie_header) = parts.headers.get("cookie") {
+            let cookie_str = cookie_header
+                .to_str()
+                .map_err(|_| CookieError::InvalidCookieFormat)?;
+
+            // 解析 cookie 字符串: name1=value1; name2=value2
+            for pair in cookie_str.split(';') {
+                let trimmed = pair.trim();
+                if let Some((name, value)) = trimmed.split_once('=') {
+                    cookies.insert(name.to_string(), value.to_string());
+                }
+            }
+        }
+
+        Ok(Cookies(cookies))
+    }
+}
+
+/// Cookie 提取错误
+#[derive(Debug)]
+pub enum CookieError {
+    /// Cookie 格式无效 - 返回 400
+    InvalidCookieFormat,
+}
+
+impl IntoResponse for CookieError {
+    fn into_response(self) -> Response {
+        // 转换为 WebError 以便全局异常处理器可以捕获
+        let web_error = match self {
+            CookieError::InvalidCookieFormat => WebError::Internal("Invalid cookie format".to_string()),
+        };
+        web_error.into_response()
+    }
+}
+
+/// Session 提取器 - 从 Cookie 中提取会话数据
+///
+/// 自动从 Cookie 中提取名为 "session" 的值并反序列化为指定类型
+///
+/// 要求 T 实现 `serde::Deserialize` trait
+///
+/// 用法示例：
+/// ```ignore
+/// use chimera_web::prelude::*;
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// struct UserSession {
+///     user_id: u64,
+///     username: String,
+/// }
+///
+/// #[get_mapping("/profile")]
+/// async fn get_profile(&self, Session(session): Session<UserSession>) -> impl IntoResponse {
+///     // session 已经从 cookie 中提取并反序列化
+///     ResponseEntity::ok(format!("Welcome, {}", session.username))
+/// }
+/// ```
+///
+/// 注意：此提取器会从名为 "session" 的 Cookie 中读取 JSON 格式的数据
+/// 如果需要自定义 Cookie 名称或解析逻辑，请使用 `Cookies` 提取器
+pub struct Session<T>(pub T);
+
+impl<T> Session<T> {
+    /// 获取内部值
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+
+    /// 获取内部值的引用
+    pub fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
+
+#[async_trait]
+impl<S, T> FromRequestParts<S> for Session<T>
+where
+    T: DeserializeOwned + Send,
+    S: Send + Sync,
+{
+    type Rejection = SessionError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // 从 Cookie header 中提取 session
+        let mut session_value = None;
+
+        if let Some(cookie_header) = parts.headers.get("cookie") {
+            let cookie_str = cookie_header
+                .to_str()
+                .map_err(|_| SessionError::InvalidFormat)?;
+
+            // 解析 cookie 字符串，查找名为 "session" 的 cookie
+            for pair in cookie_str.split(';') {
+                let trimmed = pair.trim();
+                if let Some((name, value)) = trimmed.split_once('=') {
+                    if name == "session" {
+                        session_value = Some(value.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+
+        let session_value = session_value.ok_or(SessionError::SessionNotFound)?;
+
+        // 反序列化 session 数据（假设是 JSON 格式）
+        let data: T = serde_json::from_str(&session_value).map_err(|e| {
+            tracing::debug!(error = %e, "Session deserialization error");
+            SessionError::InvalidFormat
+        })?;
+
+        Ok(Session(data))
+    }
+}
+
+/// Session 提取错误
+#[derive(Debug)]
+pub enum SessionError {
+    /// Session 不存在 - 返回 401
+    SessionNotFound,
+    /// Session 格式无效 - 返回 500
+    InvalidFormat,
+}
+
+impl IntoResponse for SessionError {
+    fn into_response(self) -> Response {
+        // 转换为 WebError 以便全局异常处理器可以捕获
+        let web_error = match self {
+            SessionError::SessionNotFound => {
+                WebError::Authentication("Session not found".to_string())
+            }
+            SessionError::InvalidFormat => {
+                WebError::Internal("Invalid session format".to_string())
+            }
+        };
+        web_error.into_response()
+    }
+}
+
 

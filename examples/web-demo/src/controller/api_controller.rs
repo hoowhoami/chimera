@@ -2,7 +2,7 @@ use chimera_core::prelude::*;
 use chimera_core_macros::Component;
 use chimera_web_macros::{Controller, controller, get_mapping, post_mapping, put_mapping, request_mapping};
 use chimera_web::prelude::*;
-use chimera_web::extractors::{PathVariable, RequestBody, RequestParam, FormData, RequestHeaders, ValidatedRequestBody, ValidatedFormData};
+use chimera_web::extractors::{PathVariable, RequestBody, RequestParam, FormData, RequestHeaders, ValidatedRequestBody, ValidatedFormData, Cookies, Session};
 use chimera_web::exception_handler::WebError;
 use serde_json::json;
 use std::sync::Arc;
@@ -469,6 +469,84 @@ impl ApiController {
                 "stock": request.stock
             },
             "note": "商品信息验证通过"
+        }))
+    }
+
+    // ========== Cookie 和 Session 提取器示例 ==========
+
+    /// GET /api/cookies
+    /// 使用 Cookies 提取器获取所有 Cookie
+    ///
+    /// 示例请求：
+    /// ```bash
+    /// curl -X GET http://localhost:3000/api/cookies \
+    ///   -H "Cookie: session_id=abc123; user_id=42; theme=dark"
+    /// ```
+    #[get_mapping("/cookies")]
+    async fn get_cookies(&self, Cookies(cookies): Cookies) -> impl IntoResponse {
+        let session_id = cookies.get("session_id").cloned();
+        let user_id = cookies.get("user_id").cloned();
+        let theme = cookies.get("theme").cloned();
+        let total = cookies.len();
+
+        ResponseEntity::ok(json!({
+            "message": "Cookie 提取成功",
+            "cookies": {
+                "session_id": session_id,
+                "user_id": user_id,
+                "theme": theme,
+                "total": total
+            },
+            "all_cookies": cookies,
+            "note": "使用 Cookies 提取器获取所有 Cookie"
+        }))
+    }
+
+    /// GET /api/session/user
+    /// 使用 Session 提取器获取用户会话信息
+    ///
+    /// 示例请求（需要在 Cookie 中设置 session）：
+    /// ```bash
+    /// # 首先创建一个 JSON 格式的 session 数据
+    /// # {"user_id":123,"username":"alice","role":"admin"}
+    /// curl -X GET http://localhost:3000/api/session/user \
+    ///   -H 'Cookie: session={"user_id":123,"username":"alice","role":"admin"}'
+    /// ```
+    #[get_mapping("/session/user")]
+    async fn get_session_user(&self, Session(session): Session<serde_json::Value>) -> impl IntoResponse {
+        ResponseEntity::ok(json!({
+            "message": "Session 提取成功",
+            "session_data": session,
+            "note": "使用 Session 提取器从 Cookie 中提取会话信息（JSON 格式）"
+        }))
+    }
+
+    /// GET /api/users/:id/preferences
+    /// 组合使用 PathVariable 和 Cookies 提取器
+    ///
+    /// 示例请求：
+    /// ```bash
+    /// curl -X GET http://localhost:3000/api/users/42/preferences \
+    ///   -H "Cookie: theme=dark; language=zh-CN; timezone=Asia/Shanghai"
+    /// ```
+    #[get_mapping("/users/:id/preferences")]
+    async fn get_user_preferences(
+        &self,
+        PathVariable(user_id): PathVariable<u32>,
+        Cookies(cookies): Cookies,
+    ) -> impl IntoResponse {
+        let theme = cookies.get("theme").cloned().unwrap_or_else(|| "light".to_string());
+        let language = cookies.get("language").cloned().unwrap_or_else(|| "en-US".to_string());
+        let timezone = cookies.get("timezone").cloned().unwrap_or_else(|| "UTC".to_string());
+
+        ResponseEntity::ok(json!({
+            "user_id": user_id,
+            "preferences": {
+                "theme": theme,
+                "language": language,
+                "timezone": timezone
+            },
+            "note": "组合使用 PathVariable 和 Cookies 提取器"
         }))
     }
 }
