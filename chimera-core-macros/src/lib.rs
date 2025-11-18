@@ -3,6 +3,7 @@ mod value_injection;
 mod config_properties_impl;
 mod component_impl;
 mod bean_impl;
+mod bean_post_processor_impl;
 
 use proc_macro::TokenStream;
 
@@ -55,4 +56,41 @@ pub fn bean(_attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(ConfigurationProperties, attributes(prefix, config))]
 pub fn derive_configuration_properties(input: TokenStream) -> TokenStream {
     config_properties_impl::derive_configuration_properties_impl(input)
+}
+
+/// BeanPostProcessor派生宏
+///
+/// 用于自动注册 BeanPostProcessor 到框架
+///
+/// 注意：必须同时使用 #[derive(Component)] 才能让 BeanPostProcessor 支持依赖注入
+///
+/// 用法：
+/// ```ignore
+/// use chimera_core::prelude::*;
+/// use chimera_core_macros::{BeanPostProcessor, Component};
+///
+/// #[derive(BeanPostProcessor, Component)]
+/// pub struct LoggingBeanPostProcessor {
+///     #[autowired]
+///     context: Arc<ApplicationContext>,
+/// }
+///
+/// impl BeanPostProcessor for LoggingBeanPostProcessor {
+///     fn post_process_after_initialization(
+///         &self,
+///         bean: Arc<dyn Any + Send + Sync>,
+///         bean_name: &str
+///     ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+///         tracing::info!("Bean initialized: {}", bean_name);
+///         Ok(bean)
+///     }
+///
+///     fn order(&self) -> i32 {
+///         100  // 可选：重写 order 方法指定优先级，数字越小优先级越高
+///     }
+/// }
+/// ```
+#[proc_macro_derive(BeanPostProcessor)]
+pub fn derive_bean_post_processor(input: TokenStream) -> TokenStream {
+    bean_post_processor_impl::derive_bean_post_processor_impl(input)
 }

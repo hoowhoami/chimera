@@ -6,6 +6,8 @@ mod models;
 mod service;
 mod controller;
 mod error;
+mod aspects;      // AOP 切面模块
+mod processors;   // BeanPostProcessor 示例模块
 
 // 导入异常处理器模块
 mod handlers {

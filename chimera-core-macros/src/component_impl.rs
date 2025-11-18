@@ -534,7 +534,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #[::chimera_core::async_trait::async_trait]
-        impl chimera_core::ComponentBean for #name {
+        impl chimera_core::Component for #name {
             fn bean_name() -> &'static str {
                 #bean_name
             }

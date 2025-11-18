@@ -37,7 +37,7 @@ pub struct EventListenerRegistry {
 
 inventory::collect!(EventListenerRegistry);
 
-/// ComponentBean trait - 用于标记可以自动注册到容器的组件
+/// Component trait - 用于标记可以自动注册到容器的组件
 ///
 /// 通过 #[derive(Component)] 宏自动实现
 ///
@@ -57,7 +57,7 @@ inventory::collect!(EventListenerRegistry);
 /// }
 /// ```
 #[async_trait::async_trait]
-pub trait ComponentBean: Sized + Send + Sync + 'static {
+pub trait Component: Sized + Send + Sync + 'static {
     /// 获取 Bean 名称
     fn bean_name() -> &'static str;
 

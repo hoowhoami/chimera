@@ -2,7 +2,7 @@
 //!
 //! 展示如何实现自定义的全局异常处理器
 
-use chimera_core::ComponentBean;
+use chimera_core::Component;
 use chimera_core_macros::{bean, Component};
 use chimera_web::exception_handler::{ErrorResponse, GlobalExceptionHandler, WebError};
 use chimera_web_macros::ExceptionHandler;

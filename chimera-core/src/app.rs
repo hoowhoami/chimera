@@ -229,6 +229,10 @@ impl ChimeraApplication {
         tracing::info!("Scanning for @Component annotated beans");
         context.scan_components().await?;
 
+        // 自动扫描并注册 BeanPostProcessor
+        tracing::info!("Scanning for @BeanPostProcessor annotated processors");
+        context.scan_bean_post_processors().await;
+
         // 自动扫描并注册EventListener
         tracing::info!("Scanning for EventListener implementations");
         context.scan_event_listeners().await?;

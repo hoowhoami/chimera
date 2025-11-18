@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::bean_post_processor::BeanPostProcessor;
 use crate::constants;
 use crate::{
     bean::{BeanDefinition, FunctionFactory},
@@ -75,6 +76,9 @@ pub struct ApplicationContext {
 
     /// 应用名称（用于事件）
     app_name: RwLock<Option<String>>,
+
+    /// Bean 后置处理器列表（按优先级排序）
+    bean_post_processors: RwLock<Vec<Arc<dyn BeanPostProcessor>>>,
 }
 
 impl ApplicationContext {
@@ -89,6 +93,7 @@ impl ApplicationContext {
             event_publisher: Arc::new(AsyncEventPublisher::new()),
             shutdown_hooks: RwLock::new(Vec::new()),
             app_name: RwLock::new(None),
+            bean_post_processors: RwLock::new(Vec::new()),
         }
     }
 
@@ -143,6 +148,55 @@ impl ApplicationContext {
         let mut hooks = self.shutdown_hooks.write().await;
         hooks.push(Box::new(hook));
         tracing::debug!("Registered shutdown hook, total: {}", hooks.len());
+    }
+
+    /// 注册 BeanPostProcessor
+    ///
+    /// BeanPostProcessor 会在 Bean 初始化前后进行处理，按优先级顺序执行
+    pub async fn add_bean_post_processor(&self, processor: Arc<dyn BeanPostProcessor>) {
+        let mut processors = self.bean_post_processors.write().await;
+        processors.push(processor);
+        // 按优先级排序（order 越小优先级越高）
+        processors.sort_by_key(|p| p.order());
+        tracing::debug!("Registered BeanPostProcessor: '{}' with order {}",
+            processors.last().unwrap().name(),
+            processors.last().unwrap().order());
+    }
+
+    /// 扫描并注册所有通过 #[derive(BeanPostProcessor)] 宏标记的处理器
+    ///
+    /// 此方法会自动从容器中获取所有 BeanPostProcessor 实例
+    /// 注意：BeanPostProcessor 必须同时使用 #[derive(Component)] 注册为组件
+    pub async fn scan_bean_post_processors(self: &Arc<Self>) {
+        use crate::bean_post_processor::BeanPostProcessorMarker;
+
+        let markers: Vec<_> = inventory::iter::<BeanPostProcessorMarker>().collect();
+
+        if markers.is_empty() {
+            tracing::debug!("No BeanPostProcessor markers found");
+            return;
+        }
+
+        tracing::info!("Starting BeanPostProcessor scan, found {} marker(s)", markers.len());
+
+        for marker in markers {
+            tracing::debug!("  ├─ Looking for BeanPostProcessor: {} ({})", marker.bean_name, marker.type_name);
+
+            // 使用 getter 函数从容器中获取 BeanPostProcessor 实例
+            match (marker.getter)(self).await {
+                Ok(processor) => {
+                    tracing::debug!("  ├─ Successfully retrieved BeanPostProcessor: {}", marker.bean_name);
+                    self.add_bean_post_processor(processor).await;
+                }
+                Err(e) => {
+                    tracing::error!("  ├─ Failed to get BeanPostProcessor '{}' from container: {}", marker.bean_name, e);
+                    tracing::error!("  └─ Make sure {} is annotated with #[derive(Component)]", marker.type_name);
+                }
+            }
+        }
+
+        let count = self.bean_post_processors.read().await.len();
+        tracing::info!("BeanPostProcessor scan completed, registered {} processor(s)", count);
     }
 
     /// 构建器模式创建上下文
@@ -320,7 +374,7 @@ impl ApplicationContext {
             .ok_or_else(|| ContainerError::BeanNotFound(name.to_string()))?;
 
         // 使用工厂创建实例
-        let mut instance = definition.factory.create().await.map_err(|e| {
+        let instance = definition.factory.create().await.map_err(|e| {
             // 保留循环依赖错误，不要包装它
             match e {
                 ContainerError::CircularDependency(_) => e,
@@ -328,14 +382,37 @@ impl ApplicationContext {
             }
         })?;
 
-        // 调用 init 回调（如果存在）
-        if let Some(ref init_fn) = definition.init_callback {
-            init_fn(instance.as_mut()).map_err(|e| {
-                ContainerError::BeanCreationFailed(format!("{} init failed: {}", name, e))
-            })?;
+        let mut bean = Arc::from(instance);
+
+        // 1. 调用 BeanPostProcessor.post_process_before_initialization
+        {
+            let processors = self.bean_post_processors.read().await;
+            for processor in processors.iter() {
+                bean = processor.post_process_before_initialization(bean, name)?;
+            }
         }
 
-        Ok(Arc::from(instance))
+        // 2. 调用 init 回调（如果存在）
+        if let Some(ref init_fn) = definition.init_callback {
+            // 需要获取可变引用来调用 init
+            if let Some(bean_mut) = Arc::get_mut(&mut bean) {
+                init_fn(bean_mut).map_err(|e| {
+                    ContainerError::BeanCreationFailed(format!("{} init failed: {}", name, e))
+                })?;
+            } else {
+                tracing::warn!("Cannot call init on bean '{}': multiple references exist", name);
+            }
+        }
+
+        // 3. 调用 BeanPostProcessor.post_process_after_initialization
+        {
+            let processors = self.bean_post_processors.read().await;
+            for processor in processors.iter() {
+                bean = processor.post_process_after_initialization(bean, name)?;
+            }
+        }
+
+        Ok(bean)
     }
 
     /// 销毁所有单例 Bean（调用 destroy 回调）
