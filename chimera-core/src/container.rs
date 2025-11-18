@@ -204,6 +204,28 @@ impl ApplicationContext {
         ApplicationContextBuilder::new()
     }
 
+    /// 同步方式获取 Bean（通过名称）
+    ///
+    /// 这是 get_bean 的同步版本，使用 tokio::task::block_in_place 实现
+    /// 适合在同步代码中调用，会阻塞当前线程直到 Bean 获取完成
+    pub fn get_bean_sync(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+        tokio::task::block_in_place(|| {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async { self.get_bean(name).await })
+        })
+    }
+
+    /// 同步方式获取 Bean（通过类型）
+    ///
+    /// 这是 get_bean_by_type 的同步版本，使用 tokio::task::block_in_place 实现
+    /// 适合在同步代码中调用，会阻塞当前线程直到 Bean 获取完成
+    pub fn get_bean_by_type_sync<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>> {
+        tokio::task::block_in_place(|| {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async { self.get_bean_by_type::<T>().await })
+        })
+    }
+
     /// 注册 Bean
     pub fn register_bean<T, F, Fut>(
         &self,

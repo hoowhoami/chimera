@@ -136,11 +136,58 @@ impl ChimeraWebServer {
     }
 
     /// 自动注册所有控制器路由
-    pub fn auto_register_controllers(mut self) -> Self {
+    pub fn auto_register_controllers(mut self) -> ApplicationResult<Self> {
+        use std::collections::HashMap;
+
         let mut router = self.router.unwrap_or_else(|| Router::new());
 
-        // 自动注册所有控制器路由
-        for controller in get_all_controllers() {
+        // 收集所有路由并检测冲突
+        let mut route_map: HashMap<(String, String), Vec<String>> = HashMap::new(); // (method, path) -> [controller_names]
+
+        let controllers: Vec<_> = get_all_controllers().collect();
+
+        // 第一遍：收集所有路由并检测冲突
+        for controller in &controllers {
+            let routes = controller.get_routes();
+
+            for route in routes {
+                let key = (route.method.to_string(), route.path.clone());
+                route_map.entry(key)
+                    .or_insert_with(Vec::new)
+                    .push(controller.type_name.to_string());
+            }
+        }
+
+        // 检测冲突
+        let mut conflicts = Vec::new();
+        for ((method, path), controller_names) in &route_map {
+            if controller_names.len() > 1 {
+                conflicts.push((method.clone(), path.clone(), controller_names.clone()));
+            }
+        }
+
+        if !conflicts.is_empty() {
+            // 构建详细的错误信息
+            let mut error_msg = String::from("Route conflicts detected:\n\n");
+            for (method, path, controllers) in conflicts {
+                error_msg.push_str(&format!(
+                    "  ❌ Route conflict: {} {}\n",
+                    method, path
+                ));
+                error_msg.push_str("     Defined in:\n");
+                for controller in controllers {
+                    error_msg.push_str(&format!("       - {}\n", controller));
+                }
+                error_msg.push('\n');
+            }
+            error_msg.push_str("Please resolve these route conflicts before starting the server.");
+
+            tracing::error!("{}", error_msg);
+            return Err(chimera_core::ApplicationError::Other(error_msg));
+        }
+
+        // 第二遍：注册所有控制器路由
+        for controller in controllers {
             tracing::info!("Registering controller: {} at {}",
                 controller.type_name,
                 controller.base_path
@@ -149,7 +196,7 @@ impl ChimeraWebServer {
         }
 
         self.router = Some(router);
-        self
+        Ok(self)
     }
 
     /// 应用中间件
@@ -188,7 +235,7 @@ impl ChimeraWebServer {
     pub async fn auto_configure(self) -> ApplicationResult<Self> {
         Ok(self.initialize_middleware()
             .await?
-            .auto_register_controllers()
+            .auto_register_controllers()?
             .with_middleware())
     }
 

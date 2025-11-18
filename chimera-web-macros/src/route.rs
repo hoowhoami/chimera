@@ -17,11 +17,15 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // 收集所有路由方法
     let mut route_registrations = Vec::new();
+    let mut route_info_list = Vec::new(); // 用于收集路由信息
 
     for item in &input.items {
         if let ImplItem::Fn(method) = item {
             if let Some((http_method, path)) = extract_route_info(method) {
                 let method_name = &method.sig.ident;
+
+                // 收集路由信息用于冲突检测
+                route_info_list.push((http_method.to_string(), path.clone()));
 
                 // 提取所有方法参数（跳过 &self）
                 let params = extract_method_params(method);
@@ -96,6 +100,11 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
+    // 生成路由信息数组
+    let route_info_tokens: Vec<_> = route_info_list.iter().map(|(method, path)| {
+        quote! { (#method, #path) }
+    }).collect();
+
     // 生成代码
     let expanded = quote! {
         #input
@@ -107,6 +116,11 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
             ) -> ::chimera_web::prelude::axum::Router {
                 #(#route_registrations)*
                 router
+            }
+
+            /// 获取所有路由信息（用于冲突检测）
+            pub fn __get_routes() -> &'static [(&'static str, &'static str)] {
+                &[#(#route_info_tokens),*]
             }
         }
     };

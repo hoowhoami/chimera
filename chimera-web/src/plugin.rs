@@ -54,7 +54,8 @@ impl ApplicationPlugin for WebPlugin {
                     // 初始化中间件和自动配置
                     match server
                         .initialize_middleware().await
-                        .and_then(|s| Ok(s.auto_register_controllers().with_middleware()))
+                        .and_then(|s| s.auto_register_controllers())
+                        .map(|s| s.with_middleware())
                     {
                         Ok(configured_server) => {
                             if let Err(e) = configured_server.run().await {

@@ -30,6 +30,7 @@ pub fn derive_controller_impl(input: TokenStream) -> TokenStream {
                 register: |router| {
                     #name::__register_routes(router)
                 },
+                get_route_list: || #name::__get_routes(),
             }
         }
     };

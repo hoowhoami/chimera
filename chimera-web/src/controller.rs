@@ -99,11 +99,20 @@ where
     }
 }
 
+/// 路由信息
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RouteInfo {
+    /// HTTP 方法
+    pub method: &'static str,
+    /// 完整路径（包含基础路径）
+    pub path: String,
+}
+
 /// 控制器注册信息
 ///
 /// 用于自动发现和注册控制器
 pub struct ControllerRegistration {
-    /// 制器类型名称
+    /// 控制器类型名称
     pub type_name: &'static str,
 
     /// 基础路径
@@ -111,6 +120,31 @@ pub struct ControllerRegistration {
 
     /// 路由注册函数（接受无state的Router，返回无state的Router）
     pub register: fn(Router) -> Router,
+
+    /// 获取路由列表的函数（用于冲突检测）
+    pub get_route_list: fn() -> &'static [(&'static str, &'static str)], // (method, path)
+}
+
+impl ControllerRegistration {
+    /// 获取所有路由信息
+    pub fn get_routes(&self) -> Vec<RouteInfo> {
+        (self.get_route_list)()
+            .iter()
+            .map(|(method, path)| {
+                let full_path = if self.base_path.is_empty() {
+                    path.to_string()
+                } else if path.starts_with('/') {
+                    format!("{}{}", self.base_path, path)
+                } else {
+                    format!("{}/{}", self.base_path, path)
+                };
+                RouteInfo {
+                    method,
+                    path: full_path,
+                }
+            })
+            .collect()
+    }
 }
 
 // 使用 inventory 收集所有控制器
