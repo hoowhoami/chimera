@@ -11,6 +11,60 @@
 - **配置管理** - 多源配置、环境切换、类型绑定
 - **依赖注入** - 自动装配、生命周期管理、事件系统
 
+## 快速开始
+
+### 运行示例
+
+查看完整功能演示：
+
+```bash
+# 运行 Web 应用示例 - 展示 Web 框架所有特性
+cargo run -p web-demo
+
+# 运行综合示例 - 展示依赖注入核心特性
+cargo run -p app-demo
+
+# 测试环境变量覆盖
+CHIMERA_PROFILES_ACTIVE=prod cargo run -p app-demo
+```
+
+### 添加依赖
+
+在您的 `Cargo.toml` 中添加：
+
+```toml
+[dependencies]
+# 核心依赖注入框架
+chimera-core = "0.1"
+chimera-core-macros = "0.1"
+
+# Web 框架（可选）
+chimera-web = "0.1"
+chimera-web-macros = "0.1"
+
+# 验证框架（可选）
+chimera-validator = "0.1"
+chimera-validator-macros = "0.1"
+
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+
+# 序列化（Web 应用需要）
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+```
+
+### 基本使用流程
+
+1. **定义配置** - 使用 `@ConfigurationProperties` 绑定配置，放在 `config/application.toml`
+2. **定义服务** - 使用 `@Component` 标记组件，`@autowired` 注入依赖
+3. **启动应用** - 调用 `ChimeraApplication::new().run().await` 一行启动
+4. **使用服务** - 框架自动注册路由，或从 ApplicationContext 获取 Bean 并调用
+
+详细代码示例请参考：
+- `examples/app-demo` - 依赖注入、配置管理、事件系统示例
+- `examples/web-demo` - Web 框架、Controller、参数验证示例
+
 ## 核心特性
 
 ### Web 框架 (Chimera Web)
@@ -28,37 +82,29 @@
   - `FormData<T>` - 从表单数据提取（类似 @ModelAttribute）
   - `ValidatedFormData<T>` - 自动验证的表单数据（类似 @Valid @ModelAttribute）
   - `RequestHeaders` - 提取 HTTP 请求头（类似 @RequestHeader）
-- **参数验证** - 基于 `chimera_validator::Validate` 的自动验证，支持自定义验证消息
-  - **两种验证模式**：
-    - 模式1: 使用 `#[serde(default)]` - 字段缺失时使用默认值，然后由 validator 验证（推荐，类似 Spring Boot）
-    - 模式2: 使用 `Option<T>` - 字段缺失时为 None，由 validator 验证非空
-  - **丰富的验证规则**：`not_blank`, `length`, `email`, `range`, `pattern` 等
-  - **统一错误响应** - 所有验证错误自动转换为统一的 JSON 格式
-- **分层错误处理** - 提取器、中间件、业务逻辑的分层错误处理
+- **参数验证** - 基于 `chimera_validator::Validate` 的自动验证
 - **全局异常处理** - 类似 Spring Boot 的 @ControllerAdvice
 - **类型安全** - 编译时检查所有参数类型
 - **依赖注入集成** - Controller 无缝访问 DI 容器中的 Bean
-- **灵活组合** - 在一个方法中使用多个提取器
 
 ### 依赖注入 (Dependency Injection)
 
 - **自动装配** - 通过 `@Component` 和 `@autowired` 注解实现类似 Spring 的自动依赖注入
 - **类型安全** - 基于 Rust 类型系统，编译时检查依赖关系
-- **可选依赖** - 支持 `Option<Arc<T>>` 实现可选依赖注入，服务降级更灵活
+- **可选依赖** - 支持 `Option<Arc<T>>` 实现可选依赖注入
 - **命名注入** - 支持通过 bean 名称进行精确注入
 - **线程安全** - 使用 `Arc` 和 `RwLock` 保证并发安全
-- **依赖验证** - 静态检测循环依赖和缺失依赖，提前发现问题
+- **依赖验证** - 静态检测循环依赖和缺失依赖
 
 ### 配置管理
 
-- **@ConfigurationProperties** - 批量绑定配置到类型安全的结构体，自动注册为 Bean
-- **@Value 注入** - 直接将配置值注入到字段，支持默认值和多种数据类型（String、i32、Vec等）
+- **@ConfigurationProperties** - 批量绑定配置到类型安全的结构体
+- **@Value 注入** - 直接将配置值注入到字段
 - **多配置源** - 支持 TOML 配置文件、环境变量等多种配置来源
-- **自动查找配置** - 类似 Spring Boot，自动从 `config/application.toml` 或 `application.toml` 加载
-- **优先级管理** - 环境变量 > 配置文件 > 默认值，灵活覆盖配置
-- **Profile 支持** - 类似 Spring 的 dev/prod 环境配置切换（`config/application-dev.toml`）
-- **字段名转换** - 自动将 snake_case 转换为 kebab-case
-- **数组支持** - @Value 支持 Vec 类型，兼容 TOML 数组和逗号分隔字符串
+- **自动查找配置** - 类似 Spring Boot，自动从 `config/application.toml` 加载
+- **优先级管理** - 环境变量 > 配置文件 > 默认值
+- **Profile 支持** - 类似 Spring 的 dev/prod 环境配置切换
+- **配置命名空间** - 框架配置使用 `chimera.*` 前缀（如 `chimera.app.name`）
 
 ### Bean 作用域与生命周期
 
@@ -71,403 +117,59 @@
 
 ### 事件系统
 
-- **异步事件发布/订阅** - 基于 tokio 的异步事件处理机制
-- **EventListener** - 通用事件监听器，监听所有事件
-- **TypedEventListener** - 类型化事件监听器，只监听特定类型事件
+- **同步/异步事件** - 支持同步和异步两种事件处理模式
+- **ApplicationEventPublisher** - 事件发布接口
+- **ApplicationEventMulticaster** - 事件分发机制
+- **EventListener** - 通用事件监听器
+- **TypedEventListener** - 类型化事件监听器
 - **内置应用事件** - ApplicationStartedEvent、ApplicationShutdownEvent 等
-- **自定义事件** - 轻松定义和发布业务事件
+- **异常处理** - 支持 ErrorHandler 统一处理监听器异常
 
 ### 核心组件注入
 
 框架自动注册以下核心组件，可通过 `@autowired` 直接注入使用：
 
-- **ApplicationContext** - 应用上下文，动态获取 Bean、检查 Bean 存在性
+- **ApplicationContext** - 应用上下文，动态获取 Bean
 - **Environment** - 配置环境，访问配置源、激活的 Profile
-- **AsyncEventPublisher** - 事件发布器，发布自定义事件
+- **ApplicationEventPublisher** - 事件发布器，发布自定义事件
 
 ### 应用启动器
 
 - **ChimeraApplication** - Spring Boot 风格的一行启动方式
+- **智能阻塞** - 有 keep-alive 插件（如 Web 服务器）时自动阻塞，否则执行完退出
 - **自动组件扫描** - 自动发现并注册所有标记 `@Component` 的组件
 - **配置自动加载** - 自动加载配置文件和环境变量
 - **依赖自动验证** - 启动时自动验证所有依赖关系
 - **Banner 显示** - 启动时显示框架信息
-- **初始化器** - 支持自定义初始化逻辑
+- **插件机制** - 支持自定义插件扩展框架功能
 
 ### 日志系统
 
 - **基于 tracing** - 使用 Rust 生态标准的 tracing 框架
 - **自动初始化** - 应用启动时自动配置日志
 - **多级别支持** - 支持 TRACE、DEBUG、INFO、WARN、ERROR 日志级别
-- **灵活配置** - 通过环境变量 `RUST_LOG` 控制日志级别和过滤器
-
-## 快速开始
-
-### 运行示例
-
-查看完整功能演示：
-
-```bash
-# 运行 Web 应用示例 - 展示 Web 框架所有特性
-cargo run -p web-demo
-
-# 运行综合示例 - 展示依赖注入核心特性
-cargo run -p app-demo
-
-# 测试环境变量覆盖
-DEMO_DATABASE_URL=custom cargo run -p app-demo
-DEMO_SERVER_PORT=9000 cargo run -p app-demo
-```
-
-### Web 应用开发
-
-使用 Chimera Web 构建 RESTful API：
-
-```rust
-use chimera_core::prelude::*;
-use chimera_core_macros::Component;
-use chimera_web::prelude::*;
-use chimera_web_macros::{Controller, controller, get_mapping, post_mapping};
-use chimera_web::extractors::{PathVariable, RequestBody};
-
-// 1. 定义 Controller
-#[derive(Controller, Component, Clone)]
-#[route("/api/users")]
-struct UserController {
-    #[autowired]
-    user_service: Arc<UserService>,
-}
-
-#[controller]
-impl UserController {
-    // GET /api/users/:id - 使用 PathVariable 提取路径参数
-    #[get_mapping("/:id")]
-    async fn get_user(&self, PathVariable(id): PathVariable<u32>) -> impl IntoResponse {
-        match self.user_service.find_by_id(id).await {
-            Some(user) => ResponseEntity::ok(user),
-            None => ResponseEntity::not_found(json!({"error": "User not found"}))
-        }
-    }
-
-    // POST /api/users - 使用 RequestBody 提取 JSON
-    #[post_mapping("/")]
-    async fn create_user(&self, RequestBody(req): RequestBody<CreateUserRequest>) -> impl IntoResponse {
-        let user = self.user_service.create(req).await;
-        ResponseEntity::created(user)
-    }
-}
-
-// 2. 启动应用（一行启动，自动阻塞）
-#[tokio::main]
-async fn main() -> ApplicationResult<()> {
-    ChimeraApplication::new("MyApp")
-        .run_until_shutdown()  // 类似 Spring Boot 的 SpringApplication.run()
-        .await
-}
-```
-
-### 参数验证
-
-Chimera 提供了强大的参数验证功能，类似 Spring Boot 的 `@Valid` + JSR-303/380 验证。支持两种验证模式：
-
-#### 模式1: 使用 `#[serde(default)]` + 验证（推荐）
-
-字段缺失时使用默认值，然后由 validator 验证。这种方式行为更接近 Spring Boot，错误信息更友好：
-
-```rust
-use chimera_validator::Validate;
-use chimera_web::extractors::ValidatedRequestBody;
-
-// 1. 定义带验证规则的请求模型
-#[derive(Deserialize, Validate)]
-struct RegisterUserRequest {
-    /// 字段缺失时使用空字符串，然后由 validator 检测
-    #[serde(default)]
-    #[validate(not_blank(message = "用户名不能为空"))]
-    #[validate(length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间"))]
-    username: String,
-
-    #[serde(default)]
-    #[validate(not_blank(message = "邮箱不能为空"))]
-    #[validate(email(message = "请输入有效的邮箱地址"))]
-    email: String,
-
-    #[serde(default)]
-    #[validate(range(min = 18, max = 120, message = "年龄必须在18-120岁之间"))]
-    age: u32,
-}
-
-// 2. 使用 ValidatedRequestBody 自动验证
-#[controller]
-impl UserController {
-    #[post_mapping("/register")]
-    async fn register(&self, ValidatedRequestBody(req): ValidatedRequestBody<RegisterUserRequest>) -> impl IntoResponse {
-        // 如果执行到这里，说明验证已通过
-        // 验证失败会自动返回 400 Bad Request 和详细的验证错误信息
-        let user = self.user_service.create(req).await;
-        ResponseEntity::created(user)
-    }
-}
-```
-
-**请求示例**（缺失字段）：
-```bash
-curl -X POST http://localhost:3000/api/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"a"}'  # 缺失 email 和 age
-```
-
-**响应**（验证错误）：
-```json
-{
-  "timestamp": "2024-01-15T10:30:00Z",
-  "status": 400,
-  "error": "ValidationError",
-  "message": "Validation failed",
-  "path": "/api/register",
-  "details": {
-    "field_errors": {
-      "username": ["用户名长度必须在2-20个字符之间"],
-      "email": ["邮箱不能为空", "请输入有效的邮箱地址"],
-      "age": ["年龄必须在18-120岁之间"]
-    }
-  }
-}
-```
-
-#### 模式2: 使用 `Option<T>` + 验证
-
-适合部分更新场景（PATCH），字段不存在时不更新：
-
-```rust
-#[derive(Deserialize, Validate)]
-struct UpdateUserRequest {
-    /// 字段不存在：不更新
-    /// 字段存在：验证其值
-    #[validate(not_blank(message = "用户名不能为空"))]
-    #[validate(length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间"))]
-    username: Option<String>,
-
-    #[validate(email(message = "请输入有效的邮箱地址"))]
-    email: Option<String>,
-}
-```
-
-#### 支持的验证规则
-
-| 验证规则 | 说明 | 示例 |
-|---------|------|------|
-| `not_blank(message = "...")` | 字符串非空白 | `#[validate(not_blank(message = "不能为空"))]` |
-| `not_empty(message = "...")` | 字符串非空 | `#[validate(not_empty(message = "不能为空"))]` |
-| `length(min = X, max = Y, message = "...")` | 字符串长度 | `#[validate(length(min = 2, max = 20, message = "长度2-20"))]` |
-| `email(message = "...")` | 邮箱格式 | `#[validate(email(message = "邮箱格式错误"))]` |
-| `range(min = X, max = Y, message = "...")` | 数值范围 | `#[validate(range(min = 18, max = 120, message = "18-120"))]` |
-| `pattern(regex = "...", message = "...")` | 正则匹配 | `#[validate(pattern(regex = r"^1[3-9]\\d{9}$", message = "手机号格式错误"))]` |
-
-#### 支持的验证提取器
-
-Chimera 提供了三种自动验证提取器：
-
-| 提取器 | 用途 | 类似 Spring Boot |
-|--------|------|----------------|
-| `ValidatedRequestBody<T>` | JSON 请求体验证 | `@Valid @RequestBody` |
-| `ValidatedFormData<T>` | 表单数据验证 | `@Valid @ModelAttribute` |
-| `ValidatedRequestParam<T>` | 查询参数验证 | `@Valid @RequestParam` |
-
-**示例：表单验证**
-```rust
-#[derive(Deserialize, Validate)]
-struct LoginForm {
-    #[serde(default)]
-    #[validate(not_blank(message = "用户名不能为空"))]
-    username: String,
-
-    #[serde(default)]
-    #[validate(length(min = 6, message = "密码长度至少为6个字符"))]
-    password: String,
-}
-
-#[post_mapping("/login")]
-async fn login(&self, ValidatedFormData(form): ValidatedFormData<LoginForm>) -> impl IntoResponse {
-    // 表单验证已通过
-    ResponseEntity::ok(json!({"message": "登录成功"}))
-}
-```
-
-**示例：查询参数验证**
-```rust
-#[derive(Deserialize, Validate)]
-struct SearchQuery {
-    #[serde(default)]
-    #[validate(length(min = 2, max = 50, message = "搜索关键词长度2-50"))]
-    keyword: String,
-
-    #[serde(default = "default_page")]
-    #[validate(range(min = 1, max = 1000, message = "页码1-1000"))]
-    page: u32,
-}
-
-fn default_page() -> u32 { 1 }
-
-#[get_mapping("/search")]
-async fn search(&self, ValidatedRequestParam(query): ValidatedRequestParam<SearchQuery>) -> impl IntoResponse {
-    // 查询参数验证已通过
-    ResponseEntity::ok(json!({"results": []}))
-}
-```
-
-### 全局异常处理
-
-类似 Spring Boot 的 `@ControllerAdvice`，实现自定义异常处理器：
-
-```rust
-use chimera_web::exception_handler::{GlobalExceptionHandler, WebError, ErrorResponse};
-use chimera_web_macros::ExceptionHandler;
-
-// 1. 定义业务错误类型
-#[derive(Error, Debug)]
-pub enum BusinessError {
-    #[error("User not found: {0}")]
-    UserNotFound(String),
-
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-}
-
-// 2. 实现全局异常处理器
-#[derive(ExceptionHandler, Component)]
-#[bean("businessExceptionHandler")]
-pub struct BusinessExceptionHandler {
-    #[value("app.debug", default = false)]
-    debug_mode: bool,
-}
-
-#[async_trait]
-impl GlobalExceptionHandler for BusinessExceptionHandler {
-    fn name(&self) -> &str {
-        "BusinessExceptionHandler"
-    }
-
-    fn priority(&self) -> i32 {
-        10 // 高优先级
-    }
-
-    fn can_handle(&self, error: &WebError) -> bool {
-        matches!(error, WebError::UserDefined(_))
-    }
-
-    async fn handle_error(&self, error: &WebError, request_path: &str) -> Option<ErrorResponse> {
-        match error {
-            WebError::UserDefined(e) => {
-                if let Some(business_error) = e.downcast_ref::<BusinessError>() {
-                    let (status_code, error_type) = match business_error {
-                        BusinessError::UserNotFound(_) => {
-                            (StatusCode::NOT_FOUND, "UserNotFound")
-                        }
-                        BusinessError::DatabaseError(_) => {
-                            (StatusCode::INTERNAL_SERVER_ERROR, "DatabaseError")
-                        }
-                    };
-
-                    Some(ErrorResponse::new(
-                        status_code,
-                        error_type.to_string(),
-                        business_error.to_string(),
-                        request_path.to_string(),
-                    ))
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-}
-
-// 3. 在 Controller 中使用业务错误
-#[controller]
-impl UserController {
-    #[get_mapping("/:id")]
-    async fn get_user(&self, PathVariable(id): PathVariable<u32>) -> impl IntoResponse {
-        match self.user_service.find_by_id(id).await {
-            Some(user) => ResponseEntity::ok(user),
-            None => {
-                let error = BusinessError::UserNotFound(id.to_string());
-                WebError::UserDefined(Box::new(error)).into_response()
-            }
-        }
-    }
-}
-```
-
-**错误处理层级**（类似 Axum 的分层架构）：
-
-1. **提取器层级** - 请求参数解析错误（JSON、Path、Query、Form 等）
-2. **中间件层级** - 认证、授权、限流等错误
-3. **业务逻辑层级** - Handler 函数中的业务错误
-4. **全局处理层级** - 统一捕获和转换所有错误
-5. **框架底层层级** - HTTP 服务器、连接错误
-
-```
-
-### 添加依赖
-
-在您的 `Cargo.toml` 中添加：
-
-```toml
-[dependencies]
-# 核心依赖注入框架
-chimera-core = "0.1"
-chimera-core-macros = "0.1"
-
-# Web 框架（可选）
-chimera-web = "0.1"
-chimera-web-macros = "0.1"
-
-# 异步运行时
-tokio = { version = "1", features = ["full"] }
-
-# 序列化（Web 应用需要）
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-```
-
-### 基本使用流程
-
-1. **定义配置** - 使用 `@ConfigurationProperties` 绑定配置，放在 `config/application.toml`
-2. **定义服务** - 使用 `@Component` 标记组件，`@autowired` 注入依赖
-3. **启动应用** - 调用 `ChimeraApplication::new().run_until_shutdown()` 一行启动
-4. **使用服务** - 框架自动注册路由，或从 ApplicationContext 获取 Bean 并调用
+- **灵活配置** - 通过环境变量 `RUST_LOG` 控制日志级别
 
 ## 项目结构
 
 ```
 chimera/
 ├── chimera-core/          # 核心依赖注入框架
-│   ├── application.rs     # 应用启动器
-│   ├── context.rs         # ApplicationContext 容器
-│   ├── config.rs          # 配置管理
-│   └── events.rs          # 事件系统
 ├── chimera-core-macros/   # 核心宏定义
-│   ├── component.rs       # @Component 宏
-│   └── config.rs          # @ConfigurationProperties 宏
 ├── chimera-web/           # Web 框架
-│   ├── server.rs          # Web 服务器
-│   ├── extractors.rs      # 参数提取器
-│   ├── controller.rs      # Controller 特质
-│   └── middleware.rs      # 中间件
 ├── chimera-web-macros/    # Web 宏定义
-│   ├── controller.rs      # @Controller 宏
-│   └── route.rs           # 路由映射宏
+├── chimera-validator/     # 验证框架
+├── chimera-validator-macros/ # 验证宏定义
+├── chimera-aop/           # AOP 框架
+├── chimera-aop-macros/    # AOP 宏定义
 └── examples/
     ├── app-demo/          # 依赖注入示例
     │   ├── src/
-    │   └── config/        # 配置目录（推荐）
-    │       ├── application.toml
-    │       └── application-dev.toml
+    │   └── config/
+    │       └── application.toml
     └── web-demo/          # Web 框架示例
         ├── src/
-        └── config/        # 配置目录（推荐）
+        └── config/
             └── application.toml
 ```
 
@@ -521,22 +223,36 @@ your-project/
 | `#[put_mapping("/path")]` | 映射 PUT 请求 | 更新操作 |
 | `#[delete_mapping("/path")]` | 映射 DELETE 请求 | 删除操作 |
 | `#[patch_mapping("/path")]` | 映射 PATCH 请求 | 部分更新 |
-| `#[request_mapping("/path")]` | 映射所有 HTTP 方法 | 通用处理 |
 
-### Web 提取器
+### 验证规则
 
-在 controller 方法中直接使用，用于提取请求参数：
+| 验证规则 | 说明 |
+|---------|------|
+| `not_blank(message = "...")` | 字符串非空白 |
+| `not_empty(message = "...")` | 字符串非空 |
+| `length(min = X, max = Y, message = "...")` | 字符串长度 |
+| `email(message = "...")` | 邮箱格式 |
+| `range(min = X, max = Y, message = "...")` | 数值范围 |
+| `pattern(regex = "...", message = "...")` | 正则匹配 |
 
-| 提取器 | 作用 | Spring Boot 等价 |
-|--------|------|------------------|
-| `PathVariable<T>` | 提取路径参数 | `@PathVariable` |
-| `RequestBody<T>` | 提取 JSON body | `@RequestBody` |
-| `ValidatedRequestBody<T>` | 提取并验证 JSON body | `@Valid @RequestBody` |
-| `RequestParam<T>` | 提取 query 参数 | `@RequestParam` |
-| `ValidatedRequestParam<T>` | 提取并验证 query 参数 | `@Valid @RequestParam` |
-| `FormData<T>` | 提取表单数据 | `@ModelAttribute` |
-| `ValidatedFormData<T>` | 提取并验证表单数据 | `@Valid @ModelAttribute` |
-| `RequestHeaders` | 提取请求头 | `@RequestHeader` |
+## 框架配置
+
+框架配置使用 `chimera.*` 命名空间：
+
+```toml
+[chimera.app]
+name = "MyApp"
+version = "1.0.0"
+
+[chimera.events]
+async = false  # 是否异步处理事件
+
+[chimera.profiles]
+active = ["dev"]  # 激活的 profiles
+```
+
+环境变量前缀为 `CHIMERA_`，例如：
+- `CHIMERA_PROFILES_ACTIVE=prod` - 设置激活的 profile
 
 ## 示例场景
 
@@ -549,53 +265,6 @@ your-project/
 - **命令行工具** - 复杂的企业级 CLI 工具
 - **数据处理** - 批量数据处理、ETL 任务等
 
-## 核心概念
-
-### 容器 (Container)
-
-ApplicationContext 是核心容器，负责：
-- Bean 的创建、缓存和生命周期管理
-- 依赖关系解析和注入
-- 配置管理和环境变量处理
-- 事件发布和监听器管理
-
-### Bean
-
-Bean 是容器管理的对象实例，特点：
-- 由容器创建和管理生命周期
-- 支持依赖注入
-- 可配置作用域（单例/原型）
-- 支持生命周期回调
-
-### 依赖解析
-
-框架在启动时：
-1. 扫描所有 `@Component` 标记的组件
-2. 分析每个组件的 `@autowired` 依赖
-3. 验证依赖关系（检测循环依赖、缺失依赖）
-4. 按依赖顺序创建 Bean
-5. 自动注入依赖到字段
-
-### Web 架构
-
-Chimera Web 基于 Axum 构建，在启动时：
-1. 扫描所有标记 `@Controller` 的控制器
-2. 从 DI 容器中获取控制器实例
-3. 解析每个控制器方法的路由映射注解
-4. 自动生成路由处理函数，支持参数提取器
-5. 注册到 Axum Router
-6. 启动 HTTP 服务器
-
-**路由注册流程**：
-```
-@Controller -> 扫描方法 -> 解析注解 -> 生成 handler -> 注入提取器 -> 注册到 Router
-```
-
-**请求处理流程**：
-```
-HTTP Request -> Router 匹配 -> 提取器解析参数 -> 调用 controller 方法 -> 返回 Response
-```
-
 ## 设计原则
 
 - **类型安全** - 充分利用 Rust 类型系统，编译期检查
@@ -604,11 +273,10 @@ HTTP Request -> Router 匹配 -> 提取器解析参数 -> 调用 controller 方�
 - **惯用 Rust** - 遵循 Rust 最佳实践和编码规范
 - **渐进式** - 支持从简单到复杂的渐进式使用
 
-
 ## 后续规划
 
 ### 核心框架
-- [ ] 支持 AOP 切面编程
+- [ ] 完善 AOP 切面编程
 - [ ] 提供 Bean 工厂扩展机制
 
 ### Web 框架
