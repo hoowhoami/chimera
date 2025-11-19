@@ -228,17 +228,17 @@ pub struct EnvironmentPropertySource {
 impl EnvironmentPropertySource {
     /// 创建环境变量配置源
     ///
-    /// # 参数
-    /// * `prefix` - 环境变量前缀，例如 "APP_"
-    pub fn new(prefix: impl Into<String>) -> Self {
+    /// 使用固定的 CHIMERA_ 前缀读取环境变量
+    /// 例如: CHIMERA_DATABASE_URL 会被转换为 database.url 配置键
+    pub fn new() -> Self {
         Self {
-            prefix: prefix.into(),
+            prefix: crate::constants::ENV_PREFIX.to_string(),
             priority: 100, // 环境变量优先级较高
         }
     }
 
     /// 将环境变量名转换为配置键
-    /// 例如: APP_DATABASE_URL -> database.url
+    /// 例如: CHIMERA_DATABASE_URL -> database.url
     fn env_to_key(&self, env_key: &str) -> String {
         if let Some(stripped) = env_key.strip_prefix(&self.prefix) {
             stripped.to_lowercase().replace('_', ".")

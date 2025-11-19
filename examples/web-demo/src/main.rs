@@ -24,8 +24,8 @@ async fn main() -> ApplicationResult<()> {
     // 也可以手动指定：.config_file("custom/path/to/config.toml")
 
     // 一行启动应用并阻塞（类似 Spring Boot 的 SpringApplication.run()）
-    ChimeraApplication::new("WebDemo")
-        .env_prefix("WEB_")
-        .run_until_shutdown()
-        .await
+    ChimeraApplication::new()
+        .run()
+        .await?;
+    Ok(())
 }

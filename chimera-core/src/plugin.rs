@@ -39,6 +39,14 @@ pub trait ApplicationPlugin: Send + Sync {
     async fn on_shutdown(&self, _context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
         Ok(())
     }
+
+    /// 插件是否需要保持应用运行
+    ///
+    /// 返回 true 表示此插件需要保持应用运行（如 Web 服务器）
+    /// 返回 false 表示插件只执行配置和初始化，不需要阻塞应用
+    fn keep_alive(&self) -> bool {
+        false  // 默认不阻塞
+    }
 }
 
 /// 插件注册表
@@ -98,6 +106,11 @@ impl PluginRegistry {
             }
         }
         Ok(())
+    }
+
+    /// 检查是否有插件需要保持应用运行
+    pub fn has_keep_alive_plugin(&self) -> bool {
+        self.plugins.iter().any(|p| p.keep_alive())
     }
 }
 

@@ -1,11 +1,9 @@
 use crate::{ApplicationContext, ContainerResult, Scope, Container};
 use crate::event::EventListener;
 use std::sync::Arc;
-use std::future::Future;
-use std::pin::Pin;
 
 /// Component注册函数类型
-pub type ComponentRegistrar = fn(&Arc<ApplicationContext>) -> Pin<Box<dyn Future<Output = ContainerResult<()>> + Send>>;
+pub type ComponentRegistrar = fn(&Arc<ApplicationContext>) -> ContainerResult<()>;
 
 /// Component注册表 - 用于inventory收集
 pub struct ComponentRegistry {
@@ -16,7 +14,7 @@ pub struct ComponentRegistry {
 inventory::collect!(ComponentRegistry);
 
 /// ConfigurationProperties注册函数类型
-pub type ConfigurationPropertiesRegistrar = fn(&Arc<ApplicationContext>) -> Pin<Box<dyn Future<Output = ContainerResult<()>> + Send>>;
+pub type ConfigurationPropertiesRegistrar = fn(&Arc<ApplicationContext>) -> ContainerResult<()>;
 
 /// ConfigurationProperties注册表 - 用于inventory收集
 pub struct ConfigurationPropertiesRegistry {
@@ -27,7 +25,7 @@ pub struct ConfigurationPropertiesRegistry {
 inventory::collect!(ConfigurationPropertiesRegistry);
 
 /// EventListener注册函数类型
-pub type EventListenerRegistrar = fn(&Arc<ApplicationContext>) -> Pin<Box<dyn Future<Output = ContainerResult<Arc<dyn EventListener>>> + Send + 'static>>;
+pub type EventListenerRegistrar = fn(&Arc<ApplicationContext>) -> ContainerResult<Arc<dyn EventListener>>;
 
 /// EventListener注册表 - 用于inventory收集
 pub struct EventListenerRegistry {
@@ -56,7 +54,6 @@ inventory::collect!(EventListenerRegistry);
 ///     db: Arc<DatabaseService>,
 /// }
 /// ```
-#[async_trait::async_trait]
 pub trait Component: Sized + Send + Sync + 'static {
     /// 获取 Bean 名称
     fn bean_name() -> &'static str;
@@ -104,10 +101,10 @@ pub trait Component: Sized + Send + Sync + 'static {
 
     /// 从容器创建实例
     /// 自动注入依赖
-    async fn create_from_context(context: &Arc<ApplicationContext>) -> ContainerResult<Self>;
+    fn create_from_context(context: &Arc<ApplicationContext>) -> ContainerResult<Self>;
 
     /// 注册到容器
-    async fn register(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+    fn register(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
         let ctx = Arc::clone(context);
         let scope = Self::scope();
         let lazy = Self::lazy();
@@ -116,10 +113,7 @@ pub trait Component: Sized + Send + Sync + 'static {
         let mut definition = crate::BeanDefinition::new(
             Self::bean_name(),
             crate::bean::FunctionFactory::new(move || {
-                let ctx = Arc::clone(&ctx);
-                async move {
-                    Self::create_from_context(&ctx).await
-                }
+                Self::create_from_context(&ctx)
             }),
         )
         .with_scope(scope)
@@ -161,7 +155,7 @@ impl ApplicationContext {
     /// 自动扫描并注册所有Component
     ///
     /// 这会自动注册所有使用#[derive(Component)]标记的类型
-    pub async fn scan_components(self: &Arc<Self>) -> ContainerResult<()> {
+    pub fn scan_components(self: &Arc<Self>) -> ContainerResult<()> {
         tracing::info!("Starting component scan for @Component annotated beans");
 
         let components: Vec<_> = inventory::iter::<ComponentRegistry>().collect();
@@ -182,7 +176,7 @@ impl ApplicationContext {
                 component.name
             );
 
-            (component.registrar)(self).await.map_err(|e| {
+            (component.registrar)(self).map_err(|e| {
                 tracing::error!("Failed to register component '{}': {}", component.name, e);
                 e
             })?;
@@ -195,7 +189,7 @@ impl ApplicationContext {
     /// 自动扫描并注册所有ConfigurationProperties
     ///
     /// 这会自动绑定所有使用#[derive(ConfigurationProperties)]标记的类型
-    pub async fn scan_configuration_properties(self: &Arc<Self>) -> ContainerResult<()> {
+    pub fn scan_configuration_properties(self: &Arc<Self>) -> ContainerResult<()> {
         tracing::info!("Starting configuration properties scan for @ConfigurationProperties annotated beans");
 
         let config_props: Vec<_> = inventory::iter::<ConfigurationPropertiesRegistry>().collect();
@@ -216,7 +210,7 @@ impl ApplicationContext {
                 config_prop.name
             );
 
-            (config_prop.registrar)(self).await.map_err(|e| {
+            (config_prop.registrar)(self).map_err(|e| {
                 tracing::error!("Failed to bind configuration properties '{}': {}", config_prop.name, e);
                 e
             })?;
@@ -229,7 +223,7 @@ impl ApplicationContext {
     /// 自动扫描并注册EventListener
     ///
     /// 在Bean初始化后调用，自动注册所有实现了EventListener的Component
-    pub async fn scan_event_listeners(self: &Arc<Self>) -> ContainerResult<()> {
+    pub fn scan_event_listeners(self: &Arc<Self>) -> ContainerResult<()> {
         tracing::info!("Starting event listener scan for @Component beans implementing EventListener");
 
         let listeners: Vec<_> = inventory::iter::<EventListenerRegistry>().collect();
@@ -250,12 +244,12 @@ impl ApplicationContext {
                 listener_reg.name
             );
 
-            let listener = (listener_reg.registrar)(self).await.map_err(|e| {
+            let listener = (listener_reg.registrar)(self).map_err(|e| {
                 tracing::error!("Failed to create event listener '{}': {}", listener_reg.name, e);
                 e
             })?;
 
-            self.register_listener(listener).await;
+            self.register_listener(listener);
         }
 
         tracing::info!("Event listener scan completed, registered {} listener(s)", total);

@@ -11,6 +11,7 @@ description = "Core dependency injection container for Chimera framework"
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+parking_lot = "0.12"
 inventory = "0.3"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["json"] }

@@ -6,11 +6,9 @@ use std::any::Any;
 use std::sync::Arc;
 use crate::error::ContainerResult;
 use crate::ApplicationContext;
-use std::future::Future;
-use std::pin::Pin;
 
 /// BeanPostProcessor 获取函数类型
-pub type BeanPostProcessorGetter = fn(&Arc<ApplicationContext>) -> Pin<Box<dyn Future<Output = ContainerResult<Arc<dyn BeanPostProcessor>>> + Send>>;
+pub type BeanPostProcessorGetter = fn(&Arc<ApplicationContext>) -> ContainerResult<Arc<dyn BeanPostProcessor>>;
 
 /// BeanPostProcessor 标记 - 用于 inventory 收集
 ///

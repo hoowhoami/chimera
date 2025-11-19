@@ -47,7 +47,7 @@ pub async fn build_exception_handler_registry_from_inventory(
 
     for handler_info in get_all_exception_handlers() {
         // 从容器中获取已经创建好的bean实例
-        match context.get_bean(handler_info.bean_name).await {
+        match context.get_bean(handler_info.bean_name) {
             Ok(bean_any) => {
                 // 使用类型转换函数将 Arc<dyn Any> 转换为 Arc<dyn GlobalExceptionHandler>
                 match (handler_info.cast_fn)(bean_any) {

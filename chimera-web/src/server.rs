@@ -100,7 +100,6 @@ impl ChimeraWebServer {
         // 从容器获取配置
         let config = context
             .get_bean_by_type::<ServerProperties>()
-            .await
             .map_err(|e| {
                 ApplicationError::Other(format!(
                     "Failed to get ServerProperties bean: {}.",
@@ -248,23 +247,14 @@ impl ChimeraWebServer {
             .unwrap_or_else(|| Router::new())
             .into_make_service();
 
-        tracing::info!("Starting Chimera Web Server");
-        tracing::info!("Server address: http://{}", addr);
-        tracing::info!("Configuration:");
-        tracing::info!("  - Global exception handling: {}",
-            if self.config.enable_global_exception_handling { "enabled" } else { "disabled" });
-        tracing::info!("  - Request logging: {}",
-            if self.config.enable_request_logging { "enabled" } else { "disabled" });
-
-        if let Some(_exception_registry) = &self.exception_registry {
-            // 这里可以添加日志显示注册了多少个异常处理器，但需要在registry中添加方法
-        }
-
         let listener = TcpListener::bind(&addr)
             .await
             .map_err(|e| ApplicationError::Other(format!("Failed to bind to {}: {}", addr, e)))?;
 
-        tracing::info!("Server ready! Listening on http://{}", addr);
+        tracing::info!(
+            "Web Server (Axum) started on port(s): {} (http)",
+            self.config.port
+        );
 
         axum::serve(listener, app)
             .await

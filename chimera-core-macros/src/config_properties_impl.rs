@@ -186,7 +186,7 @@ pub(crate) fn derive_configuration_properties_impl(input: TokenStream) -> TokenS
             }
 
             /// 注册到容器（内部使用）
-            async fn __register_to_context(context: &std::sync::Arc<chimera_core::ApplicationContext>) -> chimera_core::ContainerResult<()> {
+            fn __register_to_context(context: &std::sync::Arc<chimera_core::ApplicationContext>) -> chimera_core::ContainerResult<()> {
                 let env = std::sync::Arc::clone(context.environment());
 
                 // 绑定配置
@@ -197,10 +197,7 @@ pub(crate) fn derive_configuration_properties_impl(input: TokenStream) -> TokenS
 
                 // 注册为单例 Bean
                 context.register_singleton(#bean_name, move || {
-                    let instance = instance.clone();
-                    async move {
-                        Ok(instance)
-                    }
+                    Ok(instance.clone())
                 })?;
 
                 Ok(())
@@ -211,10 +208,7 @@ pub(crate) fn derive_configuration_properties_impl(input: TokenStream) -> TokenS
         inventory::submit! {
             chimera_core::component::ConfigurationPropertiesRegistry {
                 registrar: |ctx: &std::sync::Arc<chimera_core::ApplicationContext>| {
-                    let ctx = std::sync::Arc::clone(ctx);
-                    Box::pin(async move {
-                        #name::__register_to_context(&ctx).await
-                    })
+                    #name::__register_to_context(ctx)
                 },
                 name: #bean_name,
             }

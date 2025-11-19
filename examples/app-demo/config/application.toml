@@ -1,3 +1,19 @@
+# Chimera Framework Configuration
+[chimera]
+# Application metadata
+[chimera.app]
+name = "ChimeraDemo"
+version = "2.0.0"
+
+# Event system configuration
+[chimera.events]
+# Whether to process events asynchronously (default: false)
+async = false
+
+# Profiles configuration (can also be set via CHIMERA_PROFILES_ACTIVE env var)
+# profiles.active = ["dev", "local"]
+
+# Legacy app config (for backward compatibility with @ConfigurationProperties)
 [app]
 name = "ChimeraDemo"
 version = "2.0.0"

@@ -35,8 +35,7 @@ impl ApplicationPlugin for WebPlugin {
         // 注册 ServerProperties Bean
         context
             .register_singleton("serverProperties", move || {
-                let env = Arc::clone(&env);
-                async move { Ok(ServerProperties::from_environment(&env)) }
+                Ok(ServerProperties::from_environment(&env))
             })
             .map_err(|e| ApplicationError::Container(e))?;
 
@@ -80,6 +79,11 @@ impl ApplicationPlugin for WebPlugin {
     async fn on_shutdown(&self, _context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
         tracing::info!("Web server shutting down");
         Ok(())
+    }
+
+    /// Web 服务器需要保持应用运行
+    fn keep_alive(&self) -> bool {
+        true
     }
 }
 

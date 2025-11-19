@@ -1,4 +1,3 @@
-use chimera_core::async_trait;
 use chimera_core::prelude::*;
 use chimera_core_macros::{Component, ConfigurationProperties};
 use std::sync::Arc;
@@ -76,7 +75,7 @@ struct SystemService {
     environment: Arc<Environment>,
 
     #[autowired]
-    event_publisher: Arc<AsyncEventPublisher>,
+    event_publisher: Arc<ApplicationEventPublisher>,
 
     test: String,
 }
@@ -103,7 +102,7 @@ impl SystemService {
         let custom_event = Arc::new(SystemHealthCheckEvent::new(
             "All core components injected successfully".to_string(),
         ));
-        self.event_publisher.publish_event(custom_event).await;
+        self.event_publisher.publish_event(custom_event);
         println!("  Published event using injected EventPublisher");
 
         println!("  ALL core components (ApplicationContext, Environment, EventPublisher) successfully injected!");
@@ -115,7 +114,7 @@ impl SystemService {
         println!("🔍 Advanced Context Usage Demo:");
 
         // 通过注入的 ApplicationContext 动态获取其他 bean
-        if let Ok(app_config) = self.context.get_bean_by_type::<AppConfig>().await {
+        if let Ok(app_config) = self.context.get_bean_by_type::<AppConfig>() {
             println!(
                 "  Retrieved AppConfig via injected context: {} v{}",
                 app_config.name, app_config.version
@@ -341,9 +340,8 @@ struct NotificationService {
     app_config: Arc<AppConfig>,
 }
 
-#[async_trait::async_trait]
 impl EventListener for NotificationService {
-    async fn on_event(&self, event: Arc<dyn Event>) {
+    fn on_event(&self, event: Arc<dyn Event>) {
         match event.event_name() {
             "ApplicationStartedEvent" => {
                 println!(
@@ -377,9 +375,8 @@ impl EventListener for NotificationService {
 #[derive(Component, Clone, Debug)]
 struct AuditService;
 
-#[async_trait::async_trait]
 impl TypedEventListener<UserRegisteredEvent> for AuditService {
-    async fn on_event(&self, event: &UserRegisteredEvent) {
+    fn on_event(&self, event: &UserRegisteredEvent) {
         println!(
             "📋 Audit log: User {} ({}) registered at {:?}",
             event.username, event.user_id, event.timestamp
@@ -423,8 +420,7 @@ async fn main() -> ApplicationResult<()> {
     // 支持 profile 特定配置：config/application-dev.toml, config/application-prod.toml 等
 
     // 启动应用
-    let context = ChimeraApplication::new("ChimeraDemo")
-        .env_prefix("DEMO_")
+    let context = ChimeraApplication::new()
         .shutdown_hook(|| {
             println!("Cleaning up resources...");
             Ok(())
@@ -438,9 +434,9 @@ async fn main() -> ApplicationResult<()> {
 
     // 注册类型化事件监听器
     {
-        let audit_service = context.get_bean_by_type::<AuditService>().await?;
+        let audit_service = context.get_bean_by_type::<AuditService>()?;
         let adapter = TypedEventListenerAdapter::new(audit_service);
-        context.register_listener(Arc::new(adapter)).await;
+        context.register_listener(Arc::new(adapter));
     }
 
     println!("Application initialized\n");
@@ -448,9 +444,9 @@ async fn main() -> ApplicationResult<()> {
     // 使用作用域确保引用在shutdown前释放
     {
         // 演示配置注入
-        let app_config = context.get_bean_by_type::<AppConfig>().await?;
-        let db_config = context.get_bean_by_type::<DatabaseConfig>().await?;
-        let redis_config = context.get_bean_by_type::<RedisConfig>().await?;
+        let app_config = context.get_bean_by_type::<AppConfig>()?;
+        let db_config = context.get_bean_by_type::<DatabaseConfig>()?;
+        let redis_config = context.get_bean_by_type::<RedisConfig>()?;
 
         println!("📋 Configuration Summary:");
         println!(
@@ -468,14 +464,14 @@ async fn main() -> ApplicationResult<()> {
 
         // 演示核心组件注入
         println!("🧩 Core Components Injection Demo:");
-        let system_service = context.get_bean_by_type::<SystemService>().await?;
+        let system_service = context.get_bean_by_type::<SystemService>()?;
         system_service.demonstrate_core_components().await?;
         system_service.demonstrate_context_usage().await?;
         println!();
 
         // 演示业务逻辑
         println!("🔄 Business Logic Demo:");
-        let user_service = context.get_bean_by_type::<UserService>().await?;
+        let user_service = context.get_bean_by_type::<UserService>()?;
 
         // 注册用户（触发事件）
         let user_id = user_service.register_user("alice")?;
@@ -485,7 +481,7 @@ async fn main() -> ApplicationResult<()> {
             user_id.clone(),
             "alice".to_string(),
         ));
-        context.publish_event(event).await;
+        context.publish_event(event);
 
         // 查询用户
         user_service.get_user(&user_id)?;
@@ -494,11 +490,11 @@ async fn main() -> ApplicationResult<()> {
 
         // 演示可选依赖
         println!("🔀 Optional Dependency Demo:");
-        let order_service = context.get_bean_by_type::<OrderService>().await?;
+        let order_service = context.get_bean_by_type::<OrderService>()?;
         order_service.create_order("ORDER-001", 9999)?;
 
         // 测试不存在的可选依赖
-        let payment_service = context.get_bean_by_type::<PaymentService>().await?;
+        let payment_service = context.get_bean_by_type::<PaymentService>()?;
         payment_service.process_payment(9999)?;
         println!();
 
@@ -508,7 +504,7 @@ async fn main() -> ApplicationResult<()> {
         println!();
     } // 释放所有bean引用
 
-    context.shutdown().await?;
+    context.shutdown()?;
 
     println!("Demo completed successfully");
     println!("Framework features demonstrated:");

@@ -41,7 +41,7 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                 ::chimera_web::prelude::axum::Extension(context):
                                     ::chimera_web::prelude::axum::Extension<::std::sync::Arc<::chimera_core::ApplicationContext>>,
                             | async move {
-                                match context.get_bean_by_type::<#self_ty>().await {
+                                match context.get_bean_by_type::<#self_ty>() {
                                     Ok(controller) => {
                                         use ::chimera_web::prelude::IntoResponse;
                                         controller.#method_name().await.into_response()
@@ -77,7 +77,7 @@ pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                                     Extension(context): Extension<Arc<ApplicationContext>>,
                                     #(#param_patterns: #param_types),*
                                 | async move {
-                                    match context.get_bean_by_type::<#self_ty>().await {
+                                    match context.get_bean_by_type::<#self_ty>() {
                                         Ok(controller) => {
                                             use ::chimera_web::prelude::IntoResponse;
                                             controller.#method_name(#(#param_names),*).await.into_response()

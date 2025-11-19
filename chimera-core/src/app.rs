@@ -25,18 +25,9 @@ impl RunningApplication {
         self.context
     }
 
-    /// 等待应用关闭
-    ///
-    /// 此方法会阻塞当前线程，直到接收到关闭信号
-    pub async fn wait_for_shutdown(self) -> ApplicationResult<()> {
-        // 阻塞直到程序被信号中断
-        let () = std::future::pending().await;
-        Ok(())
-    }
-
     /// 手动触发关闭
-    pub async fn shutdown(self) -> ApplicationResult<()> {
-        self.context.shutdown().await.map_err(|e| e.into())
+    pub fn shutdown(self) -> ApplicationResult<()> {
+        self.context.shutdown().map_err(|e| e.into())
     }
 }
 
@@ -53,14 +44,8 @@ impl std::ops::Deref for RunningApplication {
 ///
 /// 提供便捷的应用启动方式
 pub struct ChimeraApplication {
-    /// 应用名称
-    name: String,
-
     /// 配置文件路径
     config_files: Vec<String>,
-
-    /// 环境变量前缀
-    env_prefix: String,
 
     /// 激活的 profiles
     profiles: Vec<String>,
@@ -83,11 +68,12 @@ pub struct ChimeraApplication {
 
 impl ChimeraApplication {
     /// 创建新的应用
-    pub fn new(name: impl Into<String>) -> Self {
+    ///
+    /// 应用名称将从配置文件中的 chimera.app.name 读取，
+    /// 如果配置文件未指定，则使用默认值 "application"
+    pub fn new() -> Self {
         Self {
-            name: name.into(),
             config_files: Vec::new(), // 初始为空，将在 run 时根据规则查找
-            env_prefix: "APP_".to_string(),
             profiles: Vec::new(),
             show_banner: true,
             logging_config: None,
@@ -106,12 +92,6 @@ impl ChimeraApplication {
     /// 添加多个配置文件
     pub fn config_files(mut self, paths: Vec<String>) -> Self {
         self.config_files = paths;
-        self
-    }
-
-    /// 设置环境变量前缀
-    pub fn env_prefix(mut self, prefix: impl Into<String>) -> Self {
-        self.env_prefix = prefix.into();
         self
     }
 
@@ -157,6 +137,8 @@ impl ChimeraApplication {
 
     /// 运行应用
     pub async fn run(self) -> ApplicationResult<RunningApplication> {
+        use crate::constants::*;
+
         // 初始化日志系统
         let logging_config = self.logging_config.clone().unwrap_or_else(LoggingConfig::from_env);
         logging_config.init()?;
@@ -169,19 +151,71 @@ impl ChimeraApplication {
             self.print_banner();
         }
 
-        tracing::info!("Starting {} application", self.name);
+        // 首先创建一个临时的 builder 用于加载配置
+        let mut temp_builder = ApplicationContext::builder();
+
+        // 加载基础配置（不含 profile）以便读取框架配置
+        // 这样我们可以从配置文件中读取 app name 和其他框架设置
+        let config_dirs = vec!["config".to_string(), ".".to_string()];
+        for dir in &config_dirs {
+            let config_path = Path::new(dir).join("application.toml");
+            if config_path.exists() {
+                tracing::debug!("Loading base configuration from: {}", config_path.display());
+                temp_builder = temp_builder.add_property_source(Box::new(
+                    TomlPropertySource::from_file(&config_path)
+                        .map_err(|e| crate::error::ApplicationError::ConfigLoadFailed(e.to_string()))?,
+                ));
+                break;
+            }
+        }
+
+        // 添加环境变量配置源（优先级最高）
+        temp_builder = temp_builder.add_property_source(Box::new(
+            EnvironmentPropertySource::new()
+        ));
+
+        // 构建临时 context 仅用于读取配置
+        let temp_context = temp_builder.build()?;
+
+        // 从配置中读取 app name（优先级：配置文件 > 默认值）
+        let app_name = temp_context
+            .environment()
+            .get_string(CONFIG_APP_NAME)
+            .unwrap_or_else(|| DEFAULT_APP_NAME.to_string());
+
+        // 从配置中读取是否使用异步事件（默认为 false）
+        let async_events = temp_context
+            .environment()
+            .get_bool(CONFIG_EVENTS_ASYNC)
+            .unwrap_or(false);
+
+        tracing::info!("Starting {} application", app_name);
 
         // 解析 active profiles
-        // 优先级：代码设置 > 环境变量 APP_PROFILES_ACTIVE
-        let mut active_profiles = self.profiles.clone();
+        // 优先级：环境变量 > 配置文件 > 代码设置
+        let mut active_profiles = Vec::new();
+
+        // 1. 先从环境变量读取（最高优先级）
+        if let Ok(profiles_str) = std::env::var(ENV_PROFILES_ACTIVE) {
+            active_profiles = profiles_str.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            tracing::debug!("Profiles from environment variable: {:?}", active_profiles);
+        }
+
+        // 2. 如果环境变量没有，尝试从配置文件读取
         if active_profiles.is_empty() {
-            // 尝试从环境变量读取
-            if let Ok(profiles_str) = std::env::var(format!("{}PROFILES_ACTIVE", self.env_prefix)) {
-                active_profiles = profiles_str.split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect();
+            if let Some(profiles_from_config) = temp_context.environment().get_string_array(CONFIG_PROFILES_ACTIVE) {
+                active_profiles = profiles_from_config;
+                tracing::debug!("Profiles from configuration file: {:?}", active_profiles);
             }
+        }
+
+        // 3. 如果配置文件也没有，使用代码中设置的
+        if active_profiles.is_empty() && !self.profiles.is_empty() {
+            active_profiles = self.profiles.clone();
+            tracing::debug!("Profiles from code: {:?}", active_profiles);
         }
 
         if !active_profiles.is_empty() {
@@ -190,27 +224,28 @@ impl ChimeraApplication {
             tracing::info!("No active profiles set, using default configuration");
         }
 
-        // 创建 ApplicationContext Builder
-        let mut builder = ApplicationContext::builder();
+        // 创建正式的 ApplicationContext Builder，使用配置中读取的设置
+        let mut builder = ApplicationContext::builder()
+            .async_events(async_events);
 
         // 加载配置文件（按优先级：default -> profile specific -> environment）
         self.load_configurations(&mut builder, &active_profiles)?;
 
         // 添加环境变量配置源（优先级最高）
         builder = builder.add_property_source(Box::new(
-            EnvironmentPropertySource::new(&self.env_prefix)
+            EnvironmentPropertySource::new()
         ));
-        tracing::debug!("Environment variable prefix: {}", self.env_prefix);
+        tracing::debug!("Environment variable prefix: {}", ENV_PREFIX);
 
         // 设置 profiles
         builder = builder.set_active_profiles(active_profiles);
 
         // 构建 ApplicationContext
-        let context = builder.build().await?;
+        let context = builder.build()?;
         tracing::info!("ApplicationContext creating");
 
-        // 设置应用名称（用于事件）
-        context.set_app_name(self.name.clone()).await;
+        // 设置应用名称（使用从配置读取的名称）
+        context.set_app_name(app_name.clone());
 
         // 执行自定义初始化器（在扫描组件之前）
         for initializer in &self.initializers {
@@ -223,77 +258,94 @@ impl ChimeraApplication {
 
         // 自动扫描并绑定 ConfigurationProperties
         tracing::info!("Scanning for @ConfigurationProperties annotated beans");
-        context.scan_configuration_properties().await?;
+        context.scan_configuration_properties()?;
 
         // 自动扫描组件
         tracing::info!("Scanning for @Component annotated beans");
-        context.scan_components().await?;
+        context.scan_components()?;
 
         // 自动扫描并注册 BeanPostProcessor
         tracing::info!("Scanning for @BeanPostProcessor annotated processors");
-        context.scan_bean_post_processors().await;
+        context.scan_bean_post_processors();
 
         // 自动扫描并注册EventListener
         tracing::info!("Scanning for EventListener implementations");
-        context.scan_event_listeners().await?;
+        context.scan_event_listeners()?;
 
         // 验证依赖
         tracing::info!("Validating bean dependencies");
-        context.validate_dependencies().await?;
+        context.validate_dependencies()?;
 
         // 初始化所有非延迟加载的单例 Bean（包括刚扫描到的 Component）
         tracing::info!("Initializing non-lazy singleton beans");
-        context.initialize().await?;
+        context.initialize()?;
         tracing::info!("ApplicationContext initialized");
-
-        // 计算启动耗时
-        let elapsed = start_time.elapsed();
-        let elapsed_ms = elapsed.as_millis();
-
-        tracing::info!("Started {} in {}ms", self.name, elapsed_ms);
-
-        // 发布 ApplicationStartedEvent
-        let event = Arc::new(ApplicationStartedEvent::new(
-            self.name.clone(),
-            elapsed_ms,
-        ));
-        context.publish_event(event).await;
 
         // 注册在 ChimeraApplication 中配置的 shutdown hooks
         for hook in self.shutdown_hooks {
-            context.register_shutdown_hook(hook).await;
+            context.register_shutdown_hook(hook);
         }
 
         // 执行插件启动阶段
         tracing::info!("Starting plugins");
         self.plugin_registry.startup_all(&context).await?;
 
-        // 设置优雅停机信号处理（Ctrl+C）
-        let context_for_signal = Arc::clone(&context);
-        let plugin_registry_for_signal = self.plugin_registry;
-        tokio::spawn(async move {
-            match tokio::signal::ctrl_c().await {
-                Ok(()) => {
-                    tracing::info!("Received shutdown signal (Ctrl+C), initiating graceful shutdown");
+        // 计算启动耗时（包含插件启动时间）
+        let elapsed = start_time.elapsed();
+        let elapsed_ms = elapsed.as_millis();
 
-                    // 先关闭插件
-                    if let Err(e) = plugin_registry_for_signal.shutdown_all(&context_for_signal).await {
-                        tracing::error!("Error during plugin shutdown: {}", e);
-                    }
+        tracing::info!("Started {} in {} ms", app_name, elapsed_ms);
 
-                    // 再关闭应用上下文
-                    if let Err(e) = context_for_signal.shutdown().await {
-                        tracing::error!("Error during context shutdown: {}", e);
-                        std::process::exit(1);
+        // 发布 ApplicationStartedEvent
+        let event = Arc::new(ApplicationStartedEvent::new(
+            app_name.clone(),
+            elapsed_ms,
+        ));
+        context.publish_event(event);
+
+        // 检查是否有需要保持应用运行的插件
+        let needs_keep_alive = self.plugin_registry.has_keep_alive_plugin();
+
+        if needs_keep_alive {
+            tracing::info!("Application will keep running (has keep-alive plugins)");
+
+            // 设置优雅停机信号处理（Ctrl+C）
+            let context_for_signal = Arc::clone(&context);
+            let plugin_registry_for_signal = self.plugin_registry;
+            tokio::spawn(async move {
+                match tokio::signal::ctrl_c().await {
+                    Ok(()) => {
+                        tracing::info!(
+                            "Received shutdown signal (Ctrl+C), initiating graceful shutdown"
+                        );
+
+                        // 先关闭插件
+                        if let Err(e) = plugin_registry_for_signal
+                            .shutdown_all(&context_for_signal)
+                            .await
+                        {
+                            tracing::error!("Error during plugin shutdown: {}", e);
+                        }
+
+                        // 再关闭应用上下文
+                        if let Err(e) = context_for_signal.shutdown() {
+                            tracing::error!("Error during context shutdown: {}", e);
+                            std::process::exit(1);
+                        }
+                        std::process::exit(0);
                     }
-                    std::process::exit(0);
+                    Err(err) => {
+                        tracing::error!("Unable to listen for shutdown signal: {}", err);
+                    }
                 }
-                Err(err) => {
-                    tracing::error!("Unable to listen for shutdown signal: {}", err);
-                }
-            }
-        });
-        tracing::info!("Graceful shutdown hook registered (Ctrl+C to shutdown)");
+            });
+            tracing::info!("Graceful shutdown hook registered (Ctrl+C to shutdown)");
+
+            // 阻塞直到收到关闭信号
+            let () = std::future::pending().await;
+        } else {
+            tracing::info!("Application started successfully (no keep-alive plugins, will exit after run)");
+        }
 
         Ok(RunningApplication { context })
     }
@@ -405,34 +457,6 @@ impl ChimeraApplication {
         Ok(())
     }
 
-    /// 便捷方法：使用默认配置运行
-    pub async fn run_with_defaults(name: impl Into<String>) -> ApplicationResult<RunningApplication> {
-        Self::new(name).run().await
-    }
-
-    /// 便捷方法：运行应用并阻塞直到关闭（类似 Spring Boot）
-    ///
-    /// 这是一个便捷方法，等价于 `run().await?.wait_for_shutdown().await`
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use chimera_core::ChimeraApplication;
-    ///
-    /// #[tokio::main]
-    /// async fn main() -> chimera_core::ApplicationResult<()> {
-    ///     // 一行启动应用，自动阻塞直到收到关闭信号
-    ///     ChimeraApplication::new("MyApp")
-    ///         .env_prefix("APP_")
-    ///         .run_until_shutdown()
-    ///         .await?;
-    ///     Ok(())
-    /// }
-    /// ```
-    pub async fn run_until_shutdown(self) -> ApplicationResult<()> {
-        self.run().await?.wait_for_shutdown().await
-    }
-
     /// 打印 banner
     fn print_banner(&self) {
         println!();
@@ -449,6 +473,6 @@ impl ChimeraApplication {
 
 impl Default for ChimeraApplication {
     fn default() -> Self {
-        Self::new("ChimeraApplication")
+        Self::new()
     }
 }

@@ -103,19 +103,8 @@ impl ApplicationPlugin for AopPlugin {
         tracing::info!("🔷 [AopPlugin] Loaded {} aspect(s) from global registry", registry.len());
 
         // 注册 AopBeanPostProcessor
-        // 注意：configure 是同步方法，但 add_bean_post_processor 是异步方法
-        // 我们需要在运行时阻塞调用异步方法
         let aop_processor = Arc::new(crate::AopBeanPostProcessor::new());
-
-        // 验证 runtime 环境并注册处理器
-        let handle = chimera_core::ApplicationContext::validate_runtime_for_blocking()
-            .map_err(|e| chimera_core::ApplicationError::Container(e))?;
-
-        tokio::task::block_in_place(|| {
-            handle.block_on(async {
-                context.add_bean_post_processor(aop_processor).await;
-            })
-        });
+        context.add_bean_post_processor(aop_processor);
 
         tracing::info!("🔷 [AopPlugin] AOP BeanPostProcessor registered successfully");
         tracing::info!("🔷 [AopPlugin] AOP support initialized - Service beans will be automatically wrapped with AOP");

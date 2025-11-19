@@ -13,11 +13,10 @@ pub trait Bean: Any + Send + Sync {
 /// 为所有满足条件的类型自动实现 Bean trait
 impl<T: Any + Send + Sync> Bean for T {}
 
-/// Bean 工厂 trait - 用于创建 Bean 实例
-#[async_trait::async_trait]
+/// Bean 工厂 trait - 用于创建 Bean 实例（同步版本）
 pub trait BeanFactory: Send + Sync {
-    /// 创建 Bean 实例
-    async fn create(&self) -> ContainerResult<Box<dyn Any + Send + Sync>>;
+    /// 创建 Bean 实例（同步方法）
+    fn create(&self) -> ContainerResult<Box<dyn Any + Send + Sync>>;
 
     /// 获取 Bean 的类型 ID
     fn type_id(&self) -> TypeId;
@@ -120,22 +119,20 @@ impl fmt::Debug for BeanDefinition {
     }
 }
 
-/// 简单的函数工厂实现
-pub struct FunctionFactory<T, F, Fut>
+/// 简单的函数工厂实现（同步版本）
+pub struct FunctionFactory<T, F>
 where
     T: Any + Send + Sync,
-    F: Fn() -> Fut + Send + Sync,
-    Fut: std::future::Future<Output = ContainerResult<T>> + Send,
+    F: Fn() -> ContainerResult<T> + Send + Sync,
 {
     factory_fn: F,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T, F, Fut> FunctionFactory<T, F, Fut>
+impl<T, F> FunctionFactory<T, F>
 where
     T: Any + Send + Sync,
-    F: Fn() -> Fut + Send + Sync,
-    Fut: std::future::Future<Output = ContainerResult<T>> + Send,
+    F: Fn() -> ContainerResult<T> + Send + Sync,
 {
     pub fn new(factory_fn: F) -> Self {
         Self {
@@ -145,15 +142,13 @@ where
     }
 }
 
-#[async_trait::async_trait]
-impl<T, F, Fut> BeanFactory for FunctionFactory<T, F, Fut>
+impl<T, F> BeanFactory for FunctionFactory<T, F>
 where
-    T: Any + Send + Sync,
-    F: Fn() -> Fut + Send + Sync,
-    Fut: std::future::Future<Output = ContainerResult<T>> + Send,
+    T: Any + Send + Sync + 'static,
+    F: Fn() -> ContainerResult<T> + Send + Sync,
 {
-    async fn create(&self) -> ContainerResult<Box<dyn Any + Send + Sync>> {
-        let instance = (self.factory_fn)().await?;
+    fn create(&self) -> ContainerResult<Box<dyn Any + Send + Sync>> {
+        let instance = (self.factory_fn)()?;
         Ok(Box::new(instance) as Box<dyn Any + Send + Sync>)
     }
 

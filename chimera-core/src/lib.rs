@@ -37,8 +37,9 @@ pub use container::{
 };
 pub use error::{ApplicationError, ApplicationResult, ContainerError, ContainerResult};
 pub use event::{
-    ApplicationShutdownEvent, ApplicationStartedEvent, AsyncEventPublisher, Event, EventListener,
-    EventPublisher, TypedEventListener, TypedEventListenerAdapter,
+    ApplicationEventMulticaster, ApplicationEventPublisher, ApplicationShutdownEvent,
+    ApplicationStartedEvent, ErrorHandler, Event, EventListener,
+    SimpleApplicationEventMulticaster, TypedEventListener, TypedEventListenerAdapter,
 };
 pub use lifecycle::Lifecycle;
 pub use logging::{LogFormat, LogLevel, LoggingConfig};
@@ -64,8 +65,9 @@ pub mod prelude {
     pub use crate::container::{ApplicationContext, Container};
     pub use crate::error::{ApplicationError, ApplicationResult, ContainerError, ContainerResult};
     pub use crate::event::{
-        ApplicationShutdownEvent, ApplicationStartedEvent, AsyncEventPublisher, Event,
-        EventListener, EventPublisher, TypedEventListener, TypedEventListenerAdapter,
+        ApplicationEventMulticaster, ApplicationEventPublisher, ApplicationShutdownEvent,
+        ApplicationStartedEvent, Event, EventListener, SimpleApplicationEventMulticaster,
+        TypedEventListener, TypedEventListenerAdapter,
     };
     pub use crate::lifecycle::Lifecycle;
     pub use crate::logging::{LogFormat, LogLevel, LoggingConfig};

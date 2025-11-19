@@ -1,7 +1,7 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use parking_lot::RwLock;
 
 use crate::bean_post_processor::BeanPostProcessor;
 use crate::constants;
@@ -9,7 +9,7 @@ use crate::{
     bean::{BeanDefinition, FunctionFactory},
     config::Environment,
     error::{ContainerError, ContainerResult},
-    event::{ApplicationShutdownEvent, AsyncEventPublisher, Event, EventListener, EventPublisher},
+    event::{ApplicationEventPublisher, ApplicationShutdownEvent, Event, EventListener},
     utils::dependency::CreationTracker,
     Scope,
 };
@@ -29,17 +29,16 @@ pub trait CoreComponent: Send + Sync {
     fn get_from_context(context: &Arc<ApplicationContext>) -> Arc<Self>;
 }
 
-/// 容器 trait - 定义依赖注入容器的核心接口
-#[async_trait::async_trait]
+/// 容器 trait - 定义依赖注入容器的核心接口（同步版本）
 pub trait Container: Send + Sync {
     /// 注册 Bean 定义
     fn register(&self, definition: BeanDefinition) -> ContainerResult<()>;
 
     /// 通过名称获取 Bean
-    async fn get_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>>;
+    fn get_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>>;
 
     /// 通过类型获取 Bean
-    async fn get_bean_by_type<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>>;
+    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>>;
 
     /// 检查是否包含指定名称的 Bean
     fn contains_bean(&self, name: &str) -> bool;
@@ -53,7 +52,7 @@ pub trait Container: Send + Sync {
 
 /// 应用上下文 - Container 的默认实现
 pub struct ApplicationContext {
-    /// Bean 定义存储
+    /// Bean 定义存储（使用 parking_lot::RwLock，性能更好）
     definitions: RwLock<HashMap<String, BeanDefinition>>,
 
     /// 单例 Bean 缓存
@@ -69,7 +68,7 @@ pub struct ApplicationContext {
     environment: Arc<Environment>,
 
     /// 事件发布器
-    event_publisher: Arc<AsyncEventPublisher>,
+    event_publisher: Arc<ApplicationEventPublisher>,
 
     /// Shutdown hooks
     shutdown_hooks: RwLock<Vec<ShutdownHook>>,
@@ -82,58 +81,54 @@ pub struct ApplicationContext {
 }
 
 impl ApplicationContext {
-    /// 创建新的应用上下文
+    /// 创建新的应用上下文（使用默认的同步事件处理）
     pub fn new() -> Self {
+        Self::new_with_async_events(false)
+    }
+
+    /// 创建新的应用上下文，指定是否异步处理事件
+    pub fn new_with_async_events(async_events: bool) -> Self {
+        Self::new_with_async_events_and_env(async_events, None)
+    }
+
+    /// 创建新的应用上下文，指定是否异步处理事件和可选的Environment
+    ///
+    /// 此方法主要供 ApplicationContextBuilder 内部使用
+    pub(crate) fn new_with_async_events_and_env(
+        async_events: bool,
+        environment: Option<Arc<Environment>>,
+    ) -> Self {
+        use crate::event::{ApplicationEventPublisher, SimpleApplicationEventMulticaster};
+
+        // 根据配置创建相应的 multicaster
+        let multicaster: Arc<dyn crate::event::ApplicationEventMulticaster> = if async_events {
+            Arc::new(SimpleApplicationEventMulticaster::new_async())
+        } else {
+            Arc::new(SimpleApplicationEventMulticaster::new())
+        };
+
         Self {
             definitions: RwLock::new(HashMap::new()),
             singletons: RwLock::new(HashMap::new()),
             type_to_name: RwLock::new(HashMap::new()),
             creation_tracker: CreationTracker::new(),
-            environment: Arc::new(Environment::new()),
-            event_publisher: Arc::new(AsyncEventPublisher::new()),
+            environment: environment.unwrap_or_else(|| Arc::new(Environment::new())),
+            event_publisher: Arc::new(ApplicationEventPublisher::new(multicaster)),
             shutdown_hooks: RwLock::new(Vec::new()),
             app_name: RwLock::new(None),
             bean_post_processors: RwLock::new(Vec::new()),
         }
     }
 
-    /// 验证当前 runtime 是否支持 block_in_place
-    ///
-    /// 检查：
-    /// 1. 是否在 tokio runtime 中
-    /// 2. 是否是多线程 runtime（block_in_place 不支持 current_thread runtime）
-    ///
-    /// 这是一个公共方法，其他模块也可以使用它来验证 runtime 环境
-    pub fn validate_runtime_for_blocking() -> ContainerResult<tokio::runtime::Handle> {
-        let handle = tokio::runtime::Handle::try_current().map_err(|_| {
-            ContainerError::Other(anyhow::anyhow!(
-                "Synchronous method must be called within a tokio runtime. \
-                 Consider using the async version instead."
-            ))
-        })?;
-
-        // 检查 runtime 类型
-        match handle.runtime_flavor() {
-            tokio::runtime::RuntimeFlavor::CurrentThread => {
-                Err(ContainerError::Other(anyhow::anyhow!(
-                    "Synchronous methods cannot be used with current_thread runtime. \
-                     Please use a multi_thread runtime or use the async version instead."
-                )))
-            }
-            tokio::runtime::RuntimeFlavor::MultiThread => Ok(handle),
-            _ => Ok(handle), // 其他未来可能的 runtime 类型
-        }
-    }
-
     /// 设置应用名称
-    pub async fn set_app_name(&self, name: String) {
-        let mut app_name = self.app_name.write().await;
+    pub fn set_app_name(&self, name: String) {
+        let mut app_name = self.app_name.write();
         *app_name = Some(name);
     }
 
     /// 获取应用名称
-    pub async fn get_app_name(&self) -> Option<String> {
-        self.app_name.read().await.clone()
+    pub fn get_app_name(&self) -> Option<String> {
+        self.app_name.read().clone()
     }
 
     /// 获取 Environment
@@ -147,33 +142,33 @@ impl ApplicationContext {
     }
 
     /// 获取 EventPublisher
-    pub fn event_publisher(&self) -> &Arc<AsyncEventPublisher> {
+    pub fn event_publisher(&self) -> &Arc<ApplicationEventPublisher> {
         &self.event_publisher
     }
 
     /// 获取 EventPublisher（别名，方便使用）
-    pub fn get_event_publisher(&self) -> &Arc<AsyncEventPublisher> {
+    pub fn get_event_publisher(&self) -> &Arc<ApplicationEventPublisher> {
         &self.event_publisher
     }
 
-    /// 发布事件
-    pub async fn publish_event(&self, event: Arc<dyn Event>) {
-        self.event_publisher.publish_event(event).await;
+    /// 发布事件（同步方式）
+    pub fn publish_event(&self, event: Arc<dyn Event>) {
+        self.event_publisher.publish_event(event);
     }
 
     /// 注册事件监听器
-    pub async fn register_listener(&self, listener: Arc<dyn EventListener>) {
-        self.event_publisher.register_listener(listener).await;
+    pub fn register_listener(&self, listener: Arc<dyn EventListener>) {
+        self.event_publisher.add_listener(listener);
     }
 
     /// 注册 shutdown hook
     ///
     /// Shutdown hook 会在应用关闭时按注册顺序执行
-    pub async fn register_shutdown_hook<F>(&self, hook: F)
+    pub fn register_shutdown_hook<F>(&self, hook: F)
     where
         F: Fn() -> ContainerResult<()> + Send + Sync + 'static,
     {
-        let mut hooks = self.shutdown_hooks.write().await;
+        let mut hooks = self.shutdown_hooks.write();
         hooks.push(Box::new(hook));
         tracing::debug!("Registered shutdown hook, total: {}", hooks.len());
     }
@@ -181,8 +176,8 @@ impl ApplicationContext {
     /// 注册 BeanPostProcessor
     ///
     /// BeanPostProcessor 会在 Bean 初始化前后进行处理，按优先级顺序执行
-    pub async fn add_bean_post_processor(&self, processor: Arc<dyn BeanPostProcessor>) {
-        let mut processors = self.bean_post_processors.write().await;
+    pub fn add_bean_post_processor(&self, processor: Arc<dyn BeanPostProcessor>) {
+        let mut processors = self.bean_post_processors.write();
         processors.push(processor);
         // 按优先级排序（order 越小优先级越高）
         processors.sort_by_key(|p| p.order());
@@ -195,7 +190,7 @@ impl ApplicationContext {
     ///
     /// 此方法会自动从容器中获取所有 BeanPostProcessor 实例
     /// 注意：BeanPostProcessor 必须同时使用 #[derive(Component)] 注册为组件
-    pub async fn scan_bean_post_processors(self: &Arc<Self>) {
+    pub fn scan_bean_post_processors(self: &Arc<Self>) {
         use crate::bean_post_processor::BeanPostProcessorMarker;
 
         let markers: Vec<_> = inventory::iter::<BeanPostProcessorMarker>().collect();
@@ -211,10 +206,10 @@ impl ApplicationContext {
             tracing::debug!("  ├─ Looking for BeanPostProcessor: {} ({})", marker.bean_name, marker.type_name);
 
             // 使用 getter 函数从容器中获取 BeanPostProcessor 实例
-            match (marker.getter)(self).await {
+            match (marker.getter)(self) {
                 Ok(processor) => {
                     tracing::debug!("  ├─ Successfully retrieved BeanPostProcessor: {}", marker.bean_name);
-                    self.add_bean_post_processor(processor).await;
+                    self.add_bean_post_processor(processor);
                 }
                 Err(e) => {
                     tracing::error!("  ├─ Failed to get BeanPostProcessor '{}' from container: {}", marker.bean_name, e);
@@ -223,7 +218,7 @@ impl ApplicationContext {
             }
         }
 
-        let count = self.bean_post_processors.read().await.len();
+        let count = self.bean_post_processors.read().len();
         tracing::info!("BeanPostProcessor scan completed, registered {} processor(s)", count);
     }
 
@@ -232,106 +227,15 @@ impl ApplicationContext {
         ApplicationContextBuilder::new()
     }
 
-    /// 同步方式获取 Bean（通过名称）
-    ///
-    /// 这是 get_bean 的同步版本，使用 tokio::task::block_in_place 实现
-    /// 适合在同步代码中调用，会阻塞当前线程直到 Bean 获取完成
-    ///
-    /// # 限制
-    /// - 必须在 tokio multi_thread runtime 中调用
-    /// - 默认超时时间为 30 秒
-    ///
-    /// # 错误
-    /// - 如果不在 tokio runtime 中调用会返回错误
-    /// - 如果在 current_thread runtime 中调用会返回错误
-    /// - 如果获取超时会返回错误
-    pub fn get_bean_sync(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
-        self.get_bean_sync_with_timeout(name, std::time::Duration::from_secs(30))
-    }
-
-    /// 同步方式获取 Bean（通过名称，带超时）
-    ///
-    /// 与 get_bean_sync 类似，但允许自定义超时时间
-    ///
-    /// # 参数
-    /// - `name`: Bean 名称
-    /// - `timeout`: 超时时间
-    pub fn get_bean_sync_with_timeout(
-        &self,
-        name: &str,
-        timeout: std::time::Duration,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
-        let handle = Self::validate_runtime_for_blocking()?;
-
-        tokio::task::block_in_place(|| {
-            handle.block_on(async {
-                tokio::time::timeout(timeout, self.get_bean(name))
-                    .await
-                    .map_err(|_| {
-                        ContainerError::Other(anyhow::anyhow!(
-                            "Timeout while getting bean '{}' after {:?}",
-                            name,
-                            timeout
-                        ))
-                    })?
-            })
-        })
-    }
-
-    /// 同步方式获取 Bean（通过类型）
-    ///
-    /// 这是 get_bean_by_type 的同步版本，使用 tokio::task::block_in_place 实现
-    /// 适合在同步代码中调用，会阻塞当前线程直到 Bean 获取完成
-    ///
-    /// # 限制
-    /// - 必须在 tokio multi_thread runtime 中调用
-    /// - 默认超时时间为 30 秒
-    ///
-    /// # 错误
-    /// - 如果不在 tokio runtime 中调用会返回错误
-    /// - 如果在 current_thread runtime 中调用会返回错误
-    /// - 如果获取超时会返回错误
-    pub fn get_bean_by_type_sync<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>> {
-        self.get_bean_by_type_sync_with_timeout(std::time::Duration::from_secs(30))
-    }
-
-    /// 同步方式获取 Bean（通过类型，带超时）
-    ///
-    /// 与 get_bean_by_type_sync 类似，但允许自定义超时时间
-    ///
-    /// # 参数
-    /// - `timeout`: 超时时间
-    pub fn get_bean_by_type_sync_with_timeout<T: Any + Send + Sync>(
-        &self,
-        timeout: std::time::Duration,
-    ) -> ContainerResult<Arc<T>> {
-        let handle = Self::validate_runtime_for_blocking()?;
-
-        tokio::task::block_in_place(|| {
-            handle.block_on(async {
-                tokio::time::timeout(timeout, self.get_bean_by_type::<T>())
-                    .await
-                    .map_err(|_| {
-                        ContainerError::Other(anyhow::anyhow!(
-                            "Timeout while getting bean of type '{}' after {:?}",
-                            std::any::type_name::<T>(),
-                            timeout
-                        ))
-                    })?
-            })
-        })
-    }
-
     /// 注册 Bean
-    pub fn register_bean<T, F, Fut>(
+    pub fn register_bean<T, F>(
         &self,
         name: impl Into<String>,
         factory: F,
     ) -> ContainerResult<()>
     where
         T: Any + Send + Sync,
-        F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = ContainerResult<T>> + Send + 'static,
+        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
     {
         let name = name.into();
         let definition = BeanDefinition::new(name.clone(), FunctionFactory::new(factory));
@@ -339,15 +243,14 @@ impl ApplicationContext {
     }
 
     /// 注册单例 Bean
-    pub fn register_singleton<T, F, Fut>(
+    pub fn register_singleton<T, F>(
         &self,
         name: impl Into<String>,
         factory: F,
     ) -> ContainerResult<()>
     where
         T: Any + Send + Sync,
-        F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = ContainerResult<T>> + Send + 'static,
+        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
     {
         let name = name.into();
         let definition = BeanDefinition::new(name.clone(), FunctionFactory::new(factory))
@@ -356,15 +259,14 @@ impl ApplicationContext {
     }
 
     /// 注册原型 Bean
-    pub fn register_prototype<T, F, Fut>(
+    pub fn register_prototype<T, F>(
         &self,
         name: impl Into<String>,
         factory: F,
     ) -> ContainerResult<()>
     where
         T: Any + Send + Sync,
-        F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = ContainerResult<T>> + Send + 'static,
+        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
     {
         let name = name.into();
         let definition = BeanDefinition::new(name.clone(), FunctionFactory::new(factory))
@@ -373,12 +275,12 @@ impl ApplicationContext {
     }
 
     /// 初始化所有非延迟加载的单例 Bean
-    pub async fn initialize(&self) -> ContainerResult<()> {
+    pub fn initialize(&self) -> ContainerResult<()> {
         use crate::utils::dependency::topological_sort;
 
         // 获取所有需要初始化的 bean 及其依赖关系
         let (beans_to_init, dependency_map) = {
-            let definitions = self.definitions.read().await;
+            let definitions = self.definitions.read();
 
             let mut beans = Vec::new();
             let mut deps = HashMap::new();
@@ -401,9 +303,8 @@ impl ApplicationContext {
         let sorted_beans =
             topological_sort(&dependency_map).map_err(|e| ContainerError::CircularDependency(e))?;
 
-        // 按层级并发初始化
+        // 按层级初始化（简化版本，顺序执行）
         let mut levels: Vec<Vec<String>> = Vec::new();
-        let mut _initialized: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for bean_name in sorted_beans {
             if !beans_to_init.contains(&bean_name) {
@@ -430,22 +331,10 @@ impl ApplicationContext {
             levels[level].push(bean_name);
         }
 
-        // 逐层并发初始化
+        // 逐层初始化（同步顺序执行）
         for level_beans in levels {
-            let tasks: Vec<_> = level_beans
-                .into_iter()
-                .map(|bean_name| {
-                    let self_ref = self;
-                    async move { self_ref.get_bean(&bean_name).await }
-                })
-                .collect();
-
-            // 并发执行当前层级的所有 bean 初始化
-            let results = futures::future::join_all(tasks).await;
-
-            // 检查是否有错误
-            for result in results {
-                result?;
+            for bean_name in level_beans {
+                self.get_bean(&bean_name)?;
             }
         }
 
@@ -459,10 +348,10 @@ impl ApplicationContext {
     /// - 循环依赖（A -> B -> C -> A）
     ///
     /// 建议在 `scan_components()` 或 `initialize()` 之后调用此方法
-    pub async fn validate_dependencies(&self) -> ContainerResult<()> {
+    pub fn validate_dependencies(&self) -> ContainerResult<()> {
         use crate::utils::dependency::validate_dependency_graph;
 
-        let definitions = self.definitions.read().await;
+        let definitions = self.definitions.read();
 
         // 构建依赖图
         let mut dependency_map: HashMap<String, Vec<String>> = HashMap::new();
@@ -484,15 +373,15 @@ impl ApplicationContext {
     }
 
     /// 创建 Bean 实例并调用生命周期回调
-    async fn create_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
-        let definitions = self.definitions.read().await;
+    fn create_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+        let definitions = self.definitions.read();
 
         let definition = definitions
             .get(name)
             .ok_or_else(|| ContainerError::BeanNotFound(name.to_string()))?;
 
         // 使用工厂创建实例
-        let instance = definition.factory.create().await.map_err(|e| {
+        let instance = definition.factory.create().map_err(|e| {
             // 保留循环依赖错误，不要包装它
             match e {
                 ContainerError::CircularDependency(_) => e,
@@ -504,7 +393,7 @@ impl ApplicationContext {
 
         // 1. 调用 BeanPostProcessor.post_process_before_initialization
         {
-            let processors = self.bean_post_processors.read().await;
+            let processors = self.bean_post_processors.read();
             for processor in processors.iter() {
                 bean = processor.post_process_before_initialization(bean, name)?;
             }
@@ -524,7 +413,7 @@ impl ApplicationContext {
 
         // 3. 调用 BeanPostProcessor.post_process_after_initialization
         {
-            let processors = self.bean_post_processors.read().await;
+            let processors = self.bean_post_processors.read();
             for processor in processors.iter() {
                 bean = processor.post_process_after_initialization(bean, name)?;
             }
@@ -535,19 +424,18 @@ impl ApplicationContext {
 
     /// 销毁所有单例 Bean（调用 destroy 回调）
     /// 注意：只有当 Arc 的引用计数为 1 时才能调用 destroy
-    pub async fn shutdown(&self) -> ContainerResult<()> {
+    pub fn shutdown(&self) -> ContainerResult<()> {
         tracing::info!("Starting application shutdown");
 
         // 1. 发布 ApplicationShutdownEvent
         let app_name = self
             .get_app_name()
-            .await
             .unwrap_or_else(|| "Application".to_string());
         let shutdown_event = Arc::new(ApplicationShutdownEvent::new(app_name));
-        self.publish_event(shutdown_event).await;
+        self.publish_event(shutdown_event);
 
         // 2. 执行所有 shutdown hooks
-        let hooks = self.shutdown_hooks.read().await;
+        let hooks = self.shutdown_hooks.read();
         tracing::info!("Executing {} shutdown hook(s)", hooks.len());
         for (idx, hook) in hooks.iter().enumerate() {
             match hook() {
@@ -562,7 +450,7 @@ impl ApplicationContext {
 
         // 获取所有定义的克隆，避免长时间持锁
         let definitions_map: std::collections::HashMap<String, bool> = {
-            let definitions = self.definitions.read().await;
+            let definitions = self.definitions.read();
 
             definitions
                 .iter()
@@ -571,7 +459,7 @@ impl ApplicationContext {
         };
 
         // 移除所有单例并尝试调用 destroy
-        let mut singletons = self.singletons.write().await;
+        let mut singletons = self.singletons.write();
 
         let beans_to_destroy: Vec<(String, Arc<dyn Any + Send + Sync>)> =
             singletons.drain().collect();
@@ -582,7 +470,7 @@ impl ApplicationContext {
         for (name, mut bean) in beans_to_destroy {
             if definitions_map.get(&name).copied().unwrap_or(false) {
                 // 有 destroy 回调
-                let definitions = self.definitions.read().await;
+                let definitions = self.definitions.read();
 
                 if let Some(definition) = definitions.get(&name) {
                     if let Some(ref destroy_fn) = definition.destroy_callback {
@@ -615,10 +503,8 @@ impl Default for ApplicationContext {
     }
 }
 
-#[async_trait::async_trait]
 impl Container for ApplicationContext {
     fn register(&self, definition: BeanDefinition) -> ContainerResult<()> {
-        // 注册方法保持同步（不涉及bean创建）
         let name = definition.name.clone();
         let type_id = definition.factory.type_id();
         let type_name = definition.factory.type_name();
@@ -630,45 +516,37 @@ impl Container for ApplicationContext {
             definition.scope
         );
 
-        // 验证 runtime 环境
-        let handle = Self::validate_runtime_for_blocking()?;
+        // 检查是否已存在
+        {
+            let definitions = self.definitions.read();
+            if definitions.contains_key(&name) {
+                tracing::warn!("Bean '{}' already exists, registration failed", name);
+                return Err(ContainerError::BeanAlreadyExists(name));
+            }
+        }
 
-        // 使用 blocking 方式访问（仅用于注册，不在异步上下文中）
-        tokio::task::block_in_place(|| {
-            handle.block_on(async {
-                // 检查是否已存在
-                {
-                    let definitions = self.definitions.read().await;
-                    if definitions.contains_key(&name) {
-                        tracing::warn!("Bean '{}' already exists, registration failed", name);
-                        return Err(ContainerError::BeanAlreadyExists(name));
-                    }
-                }
+        // 存储定义
+        {
+            let mut definitions = self.definitions.write();
+            definitions.insert(name.clone(), definition);
+        }
 
-                // 存储定义
-                {
-                    let mut definitions = self.definitions.write().await;
-                    definitions.insert(name.clone(), definition);
-                }
+        // 注册类型到名称的映射
+        {
+            let mut type_to_name = self.type_to_name.write();
+            type_to_name.insert(type_id, name.clone());
+        }
 
-                // 注册类型到名称的映射
-                {
-                    let mut type_to_name = self.type_to_name.write().await;
-                    type_to_name.insert(type_id, name.clone());
-                }
-
-                tracing::debug!("Bean definition registered successfully: '{}'", name);
-                Ok(())
-            })
-        })
+        tracing::debug!("Bean definition registered successfully: '{}'", name);
+        Ok(())
     }
 
-    async fn get_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    fn get_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
         tracing::trace!("Requesting bean: '{}'", name);
 
         // 先检查定义是否存在
         let scope = {
-            let definitions = self.definitions.read().await;
+            let definitions = self.definitions.read();
 
             let definition = definitions.get(name).ok_or_else(|| {
                 tracing::debug!("Bean '{}' not found in container", name);
@@ -682,7 +560,7 @@ impl Container for ApplicationContext {
             Scope::Singleton => {
                 // 检查缓存
                 {
-                    let singletons = self.singletons.read().await;
+                    let singletons = self.singletons.read();
 
                     if let Some(bean) = singletons.get(name) {
                         tracing::debug!("Returning cached instance of singleton bean '{}'", name);
@@ -752,10 +630,10 @@ impl Container for ApplicationContext {
                 };
 
                 // 创建新实例
-                let bean = self.create_bean(name).await?;
+                let bean = self.create_bean(name)?;
 
                 // 缓存实例
-                let mut singletons = self.singletons.write().await;
+                let mut singletons = self.singletons.write();
                 singletons.insert(name.to_string(), Arc::clone(&bean));
 
                 tracing::debug!("Singleton bean '{}' created and cached", name);
@@ -764,23 +642,23 @@ impl Container for ApplicationContext {
             Scope::Prototype => {
                 tracing::debug!("Creating new instance of prototype bean '{}'", name);
                 // 每次创建新实例
-                self.create_bean(name).await
+                self.create_bean(name)
             }
         }
     }
 
-    async fn get_bean_by_type<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>> {
+    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>> {
         let type_id = TypeId::of::<T>();
         let type_name = std::any::type_name::<T>();
 
         // 首先尝试通过 TypeId 查找
         let name_opt = {
-            let type_to_name = self.type_to_name.read().await;
+            let type_to_name = self.type_to_name.read();
             type_to_name.get(&type_id).cloned()
         };
 
         if let Some(name) = name_opt {
-            let bean = self.get_bean(&name).await?;
+            let bean = self.get_bean(&name)?;
             bean.downcast::<T>()
                 .map_err(|_| ContainerError::TypeMismatch {
                     expected: type_name.to_string(),
@@ -789,7 +667,7 @@ impl Container for ApplicationContext {
         } else {
             // TypeId查找失败，尝试类型名称匹配
             let name_opt = {
-                let definitions = self.definitions.read().await;
+                let definitions = self.definitions.read();
 
                 let mut found_name = None;
                 for (name, definition) in definitions.iter() {
@@ -802,7 +680,7 @@ impl Container for ApplicationContext {
             };
 
             if let Some(name) = name_opt {
-                let bean = self.get_bean(&name).await?;
+                let bean = self.get_bean(&name)?;
                 bean.downcast::<T>()
                     .map_err(|_| ContainerError::TypeMismatch {
                         expected: type_name.to_string(),
@@ -818,131 +696,92 @@ impl Container for ApplicationContext {
     }
 
     fn contains_bean(&self, name: &str) -> bool {
-        // 尝试非阻塞读取（快速路径）
-        if let Ok(definitions) = self.definitions.try_read() {
-            return definitions.contains_key(name);
-        }
-
-        // 快速路径失败，检查是否在合适的 runtime 中
-        match Self::validate_runtime_for_blocking() {
-            Ok(handle) => {
-                // 降级到 block_in_place（慢速路径）
-                tokio::task::block_in_place(|| {
-                    handle.block_on(async { self.definitions.read().await.contains_key(name) })
-                })
-            }
-            Err(_) => {
-                // 如果不在合适的 runtime 中，记录警告并返回 false
-                tracing::warn!(
-                    "contains_bean called outside valid runtime context, returning false"
-                );
-                false
-            }
-        }
+        self.definitions.read().contains_key(name)
     }
 
     fn contains_bean_by_type<T: Any + Send + Sync>(&self) -> bool {
         let type_id = TypeId::of::<T>();
         let type_name = std::any::type_name::<T>();
 
-        // 尝试非阻塞读取（快速路径）
-        if let Ok(type_to_name) = self.type_to_name.try_read() {
-            if type_to_name.contains_key(&type_id) {
+        // TypeId 查找
+        if self.type_to_name.read().contains_key(&type_id) {
+            return true;
+        }
+
+        // TypeId 查找失败，尝试类型名称
+        let definitions = self.definitions.read();
+        for definition in definitions.values() {
+            if definition.factory.type_name() == type_name {
                 return true;
             }
-            // 尝试按类型名称查找
-            drop(type_to_name);
-            if let Ok(definitions) = self.definitions.try_read() {
-                for definition in definitions.values() {
-                    if definition.factory.type_name() == type_name {
-                        return true;
-                    }
-                }
-                return false;
-            }
         }
-
-        // 快速路径失败，检查是否在合适的 runtime 中
-        match Self::validate_runtime_for_blocking() {
-            Ok(handle) => {
-                // 降级到 block_in_place（慢速路径）
-                tokio::task::block_in_place(|| {
-                    handle.block_on(async {
-                        // TypeId 查找
-                        if self.type_to_name.read().await.contains_key(&type_id) {
-                            return true;
-                        }
-
-                        // TypeId 查找失败，尝试类型名称
-                        let definitions = self.definitions.read().await;
-                        for definition in definitions.values() {
-                            if definition.factory.type_name() == type_name {
-                                return true;
-                            }
-                        }
-                        false
-                    })
-                })
-            }
-            Err(_) => {
-                // 如果不在合适的 runtime 中，记录警告并返回 false
-                tracing::warn!(
-                    "contains_bean_by_type called outside valid runtime context, returning false"
-                );
-                false
-            }
-        }
+        false
     }
 
     fn get_bean_names(&self) -> Vec<String> {
-        // 尝试非阻塞读取（快速路径）
-        if let Ok(definitions) = self.definitions.try_read() {
-            return definitions.keys().cloned().collect();
-        }
+        self.definitions.read().keys().cloned().collect()
+    }
+}
 
-        // 快速路径失败，检查是否在合适的 runtime 中
-        match Self::validate_runtime_for_blocking() {
-            Ok(handle) => {
-                // 降级到 block_in_place（慢速路径）
-                tokio::task::block_in_place(|| {
-                    handle.block_on(async { self.definitions.read().await.keys().cloned().collect() })
-                })
-            }
-            Err(_) => {
-                // 如果不在合适的 runtime 中，记录警告并返回空列表
-                tracing::warn!(
-                    "get_bean_names called outside valid runtime context, returning empty list"
-                );
-                Vec::new()
-            }
-        }
+impl ApplicationContext {
+    /// 导出所有 bean 定义和类型映射（内部方法，供 ApplicationContextBuilder 使用）
+    ///
+    /// 注意：此方法会清空当前 context 的定义，应该只在转移所有权时调用
+    pub(crate) fn export_definitions(&self) -> (HashMap<String, BeanDefinition>, HashMap<TypeId, String>) {
+        let mut definitions = self.definitions.write();
+        let mut type_to_name = self.type_to_name.write();
+
+        // 使用 take 来获取内容，留下空的 HashMap
+        let defs = std::mem::take(&mut *definitions);
+        let types = std::mem::take(&mut *type_to_name);
+
+        (defs, types)
+    }
+
+    /// 导入 bean 定义和类型映射（内部方法，供 ApplicationContextBuilder 使用）
+    pub(crate) fn import_definitions(&self, definitions: HashMap<String, BeanDefinition>, type_to_name: HashMap<TypeId, String>) {
+        let mut defs = self.definitions.write();
+        let mut types = self.type_to_name.write();
+        *defs = definitions;
+        *types = type_to_name;
     }
 }
 
 /// 应用上下文构建器
 pub struct ApplicationContextBuilder {
     context: ApplicationContext,
+    async_events: bool,
 }
 
 impl ApplicationContextBuilder {
     pub fn new() -> Self {
         Self {
             context: ApplicationContext::new(),
+            async_events: false,
         }
     }
 
+    /// 设置是否异步处理事件
+    ///
+    /// 默认为 false（同步处理）
+    /// 设置为 true 时，事件将在独立的 tokio 任务中异步处理
+    pub fn async_events(mut self, async_events: bool) -> Self {
+        self.async_events = async_events;
+        self
+    }
+
     /// 注册框架核心组件（内部方法，不可扩展）
-    async fn register_core_components(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+    fn register_core_components(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
         tracing::debug!("Registering framework core components...");
 
         // 1. 注册 ApplicationContext 自身
-        Self::register_application_context(context).await?;
+        Self::register_application_context(context)?;
 
         // 2. 注册 Environment
-        Self::register_environment(context).await?;
+        Self::register_environment(context)?;
 
         // 3. 注册 EventPublisher
-        Self::register_event_publisher(context).await?;
+        Self::register_event_publisher(context)?;
 
         tracing::info!("Framework core components registered successfully");
         Ok(())
@@ -952,7 +791,7 @@ impl ApplicationContextBuilder {
     ///
     /// Bean名称: "applicationContext"
     /// 类型: Arc<ApplicationContext>
-    async fn register_application_context(
+    fn register_application_context(
         context: &Arc<ApplicationContext>,
     ) -> ContainerResult<()> {
         tracing::trace!("Registering ApplicationContext as bean");
@@ -960,9 +799,8 @@ impl ApplicationContextBuilder {
         let context_clone = Arc::clone(context);
         let definition = BeanDefinition::new(
             constants::APPLICATION_CONTEXT_BEAN_NAME,
-            FunctionFactory::<Arc<ApplicationContext>, _, _>::new(move || {
-                let ctx = Arc::clone(&context_clone);
-                async move { Ok(ctx) }
+            FunctionFactory::<Arc<ApplicationContext>, _>::new(move || {
+                Ok(Arc::clone(&context_clone))
             }),
         )
         .with_scope(Scope::Singleton);
@@ -977,15 +815,14 @@ impl ApplicationContextBuilder {
     ///
     /// Bean名称: "environment"
     /// 类型: Arc<Environment>
-    async fn register_environment(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+    fn register_environment(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
         tracing::trace!("Registering Environment as bean");
 
         let env = Arc::clone(context.environment());
         let definition = BeanDefinition::new(
             constants::ENVIRONMENT_BEAN_NAME,
-            FunctionFactory::<Arc<crate::Environment>, _, _>::new(move || {
-                let environment = Arc::clone(&env);
-                async move { Ok(environment) }
+            FunctionFactory::<Arc<crate::Environment>, _>::new(move || {
+                Ok(Arc::clone(&env))
             }),
         )
         .with_scope(Scope::Singleton);
@@ -999,16 +836,15 @@ impl ApplicationContextBuilder {
     /// 注册 EventPublisher 到容器
     ///
     /// Bean名称: "eventPublisher"
-    /// 类型: Arc<AsyncEventPublisher>
-    async fn register_event_publisher(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+    /// 类型: Arc<ApplicationEventPublisher>
+    fn register_event_publisher(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
         tracing::trace!("Registering EventPublisher as bean");
 
         let publisher = Arc::clone(context.event_publisher());
         let definition = BeanDefinition::new(
             constants::EVENT_PUBLISHER_BEAN_NAME,
-            FunctionFactory::<Arc<crate::AsyncEventPublisher>, _, _>::new(move || {
-                let event_publisher = Arc::clone(&publisher);
-                async move { Ok(event_publisher) }
+            FunctionFactory::<Arc<crate::ApplicationEventPublisher>, _>::new(move || {
+                Ok(Arc::clone(&publisher))
             }),
         )
         .with_scope(Scope::Singleton);
@@ -1026,30 +862,28 @@ impl ApplicationContextBuilder {
     }
 
     /// 注册单例 Bean
-    pub fn register_singleton<T, F, Fut>(
+    pub fn register_singleton<T, F>(
         self,
         name: impl Into<String>,
         factory: F,
     ) -> ContainerResult<Self>
     where
         T: Any + Send + Sync,
-        F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = ContainerResult<T>> + Send + 'static,
+        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
     {
         self.context.register_singleton(name, factory)?;
         Ok(self)
     }
 
     /// 注册原型 Bean
-    pub fn register_prototype<T, F, Fut>(
+    pub fn register_prototype<T, F>(
         self,
         name: impl Into<String>,
         factory: F,
     ) -> ContainerResult<Self>
     where
         T: Any + Send + Sync,
-        F: Fn() -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = ContainerResult<T>> + Send + 'static,
+        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
     {
         self.context.register_prototype(name, factory)?;
         Ok(self)
@@ -1073,14 +907,31 @@ impl ApplicationContextBuilder {
     }
 
     /// 构建上下文
-    pub async fn build(self) -> ContainerResult<Arc<ApplicationContext>> {
-        // 构建上下文
-        let context = Arc::new(self.context);
+    pub fn build(self) -> ContainerResult<Arc<ApplicationContext>> {
+        // 根据 async_events 设置创建最终的 ApplicationContext
+        let context = if self.async_events {
+            // 需要异步事件处理，创建新的 context 并复制配置
+            tracing::debug!("Building ApplicationContext with async event processing");
+
+            // 1. 提取当前 context 的环境和 bean 定义
+            let environment = Arc::clone(&self.context.environment);
+            let (definitions, type_to_name) = self.context.export_definitions();
+
+            // 2. 创建新的 ApplicationContext，使用异步事件处理和现有环境
+            let new_context = ApplicationContext::new_with_async_events_and_env(true, Some(environment));
+
+            // 3. 导入 bean 定义
+            new_context.import_definitions(definitions, type_to_name);
+
+            Arc::new(new_context)
+        } else {
+            // 使用默认的同步事件处理
+            Arc::new(self.context)
+        };
 
         // 自动注册框架核心组件
         tracing::debug!("Auto-registering framework core components...");
         Self::register_core_components(&context)
-            .await
             .map_err(|e| {
                 tracing::error!("Failed to register core components: {}", e);
                 e

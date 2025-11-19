@@ -112,11 +112,11 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                 // 使用类型注入
                 if is_optional {
                     quote! {
-                        let #field_name = context.get_bean_by_type::<#inner_type>().await.ok();
+                        let #field_name = context.get_bean_by_type::<#inner_type>().ok();
                     }
                 } else {
                     quote! {
-                        let #field_name = context.get_bean_by_type::<#inner_type>().await?;
+                        let #field_name = context.get_bean_by_type::<#inner_type>()?;
                     }
                 }
             }
@@ -511,18 +511,15 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    // 生成Component trait实现和自动注册代码（异步）
+    // 生成Component trait实现和自动注册代码
     let event_listener_registration = if is_event_listener {
         quote! {
             // 自动向inventory注册EventListener
             inventory::submit! {
                 chimera_core::EventListenerRegistry {
                     registrar: |ctx: &std::sync::Arc<chimera_core::ApplicationContext>| {
-                        let ctx = std::sync::Arc::clone(ctx);
-                        Box::pin(async move {
-                            let listener = ctx.get_bean_by_type::<#name>().await?;
-                            Ok(listener as std::sync::Arc<dyn chimera_core::EventListener>)
-                        })
+                        let listener = ctx.get_bean_by_type::<#name>()?;
+                        Ok(listener as std::sync::Arc<dyn chimera_core::EventListener>)
                     },
                     name: #bean_name,
                 }
@@ -533,7 +530,6 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
-        #[::chimera_core::async_trait::async_trait]
         impl chimera_core::Component for #name {
             fn bean_name() -> &'static str {
                 #bean_name
@@ -555,7 +551,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
 
             #destroy_callback_impl
 
-            async fn create_from_context(context: &std::sync::Arc<chimera_core::ApplicationContext>) -> chimera_core::ContainerResult<Self> {
+            fn create_from_context(context: &std::sync::Arc<chimera_core::ApplicationContext>) -> chimera_core::ContainerResult<Self> {
                 use std::sync::Arc;
 
                 #(#autowired_injections)*
@@ -572,10 +568,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
         inventory::submit! {
             chimera_core::component::ComponentRegistry {
                 registrar: |ctx: &std::sync::Arc<chimera_core::ApplicationContext>| {
-                    let ctx = std::sync::Arc::clone(ctx);
-                    Box::pin(async move {
-                        #name::register(&ctx).await
-                    })
+                    #name::register(ctx)
                 },
                 name: #bean_name,
             }
@@ -680,7 +673,7 @@ fn generate_core_component_injection(
         if is_optional {
             quote! {
                 let #field_name = {
-                    match context.get_bean(#bean_name).await {
+                    match context.get_bean(#bean_name) {
                         Ok(bean_any) => {
                             bean_any.downcast::<#inner_type>()
                                 .map(Some)
@@ -693,7 +686,7 @@ fn generate_core_component_injection(
         } else {
             quote! {
                 let #field_name = {
-                    let bean_any = context.get_bean(#bean_name).await?;
+                    let bean_any = context.get_bean(#bean_name)?;
                     bean_any.downcast::<#inner_type>()
                         .map_err(|_| chimera_core::ContainerError::TypeMismatch {
                             expected: std::any::type_name::<#inner_type>().to_string(),
@@ -718,14 +711,14 @@ fn is_core_component_type_id(inner_type: &syn::Type) -> bool {
         "Environment",
         "chimera_core :: Environment",
         "chimera_core :: config :: Environment",
-        "AsyncEventPublisher",
-        "chimera_core :: AsyncEventPublisher",
-        "chimera_core :: event :: AsyncEventPublisher",
+        "ApplicationEventPublisher",
+        "chimera_core :: ApplicationEventPublisher",
+        "chimera_core :: event :: ApplicationEventPublisher",
     ];
 
     // 检查是否匹配核心组件类型
     CORE_COMPONENT_TYPES.contains(&type_tokens.as_str())
         || type_tokens.contains("ApplicationContext")
         || type_tokens.contains("Environment")
-        || type_tokens.contains("AsyncEventPublisher")
+        || type_tokens.contains("ApplicationEventPublisher")
 }

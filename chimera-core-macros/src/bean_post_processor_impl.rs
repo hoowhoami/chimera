@@ -23,11 +23,8 @@ pub fn derive_bean_post_processor_impl(input: TokenStream) -> TokenStream {
                 bean_name: #bean_name,
                 type_name: ::std::stringify!(#struct_name),
                 getter: |ctx: &::std::sync::Arc<::chimera_core::ApplicationContext>| {
-                    let ctx = ::std::sync::Arc::clone(ctx);
-                    Box::pin(async move {
-                        let bean = ctx.get_bean_by_type::<#struct_name>().await?;
-                        Ok(bean as ::std::sync::Arc<dyn ::chimera_core::BeanPostProcessor>)
-                    })
+                    let bean = ctx.get_bean_by_type::<#struct_name>()?;
+                    Ok(bean as ::std::sync::Arc<dyn ::chimera_core::BeanPostProcessor>)
                 },
             }
         }

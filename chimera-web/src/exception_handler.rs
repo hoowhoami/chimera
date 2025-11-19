@@ -369,7 +369,7 @@ impl GlobalExceptionHandlerRegistry {
     where
         T: GlobalExceptionHandler + Clone + 'static,
     {
-        match context.get_bean_by_type::<T>().await {
+        match context.get_bean_by_type::<T>() {
             Ok(handler) => {
                 let handler_name = handler.name().to_string();
                 self.register((*handler).clone());
