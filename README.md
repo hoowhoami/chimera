@@ -42,9 +42,8 @@ chimera-core-macros = "0.1"
 chimera-web = "0.1"
 chimera-web-macros = "0.1"
 
-# 验证框架（可选）
-chimera-validator = "0.1"
-chimera-validator-macros = "0.1"
+# 参数验证（Web 框架需要）
+validator = { version = "0.18", features = ["derive"] }
 
 # 异步运行时
 tokio = { version = "1", features = ["full"] }
@@ -82,7 +81,7 @@ serde_json = "1"
   - `FormData<T>` - 从表单数据提取（类似 @ModelAttribute）
   - `ValidatedFormData<T>` - 自动验证的表单数据（类似 @Valid @ModelAttribute）
   - `RequestHeaders` - 提取 HTTP 请求头（类似 @RequestHeader）
-- **参数验证** - 基于 `chimera_validator::Validate` 的自动验证
+- **参数验证** - 基于标准 `validator` 库的自动验证，支持自定义错误消息
 - **全局异常处理** - 类似 Spring Boot 的 @ControllerAdvice
 - **类型安全** - 编译时检查所有参数类型
 - **依赖注入集成** - Controller 无缝访问 DI 容器中的 Bean
@@ -158,8 +157,6 @@ chimera/
 ├── chimera-core-macros/   # 核心宏定义
 ├── chimera-web/           # Web 框架
 ├── chimera-web-macros/    # Web 宏定义
-├── chimera-validator/     # 验证框架
-├── chimera-validator-macros/ # 验证宏定义
 ├── chimera-aop/           # AOP 框架
 ├── chimera-aop-macros/    # AOP 宏定义
 └── examples/
@@ -226,14 +223,19 @@ your-project/
 
 ### 验证规则
 
+基于 Rust 标准 `validator` 库，支持以下验证规则：
+
 | 验证规则 | 说明 |
 |---------|------|
-| `not_blank(message = "...")` | 字符串非空白 |
-| `not_empty(message = "...")` | 字符串非空 |
 | `length(min = X, max = Y, message = "...")` | 字符串长度 |
 | `email(message = "...")` | 邮箱格式 |
 | `range(min = X, max = Y, message = "...")` | 数值范围 |
-| `pattern(regex = "...", message = "...")` | 正则匹配 |
+| `regex(path = "*REGEX", message = "...")` | 正则匹配 |
+| `url(message = "...")` | URL 格式 |
+| `must_match(other = "field", message = "...")` | 字段匹配 |
+| `contains(pattern = "...", message = "...")` | 包含子串 |
+
+更多验证规则请参考 [validator 文档](https://docs.rs/validator/)
 
 ## 框架配置
 

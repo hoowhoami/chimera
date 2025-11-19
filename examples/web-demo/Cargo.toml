@@ -8,7 +8,6 @@ chimera-core = { workspace = true }
 chimera-core-macros = { path = "../../chimera-core-macros" }
 chimera-web = { path = "../../chimera-web" }
 chimera-web-macros = { path = "../../chimera-web-macros" }
-chimera-validator = { path = "../../chimera-validator" }
 chimera-aop = { path = "../../chimera-aop" }
 chimera-aop-macros = { path = "../../chimera-aop-macros" }
 
@@ -23,3 +22,5 @@ chrono = "0.4"
 regex = "1.10"
 axum = "0.7"
 async-trait = "0.1"
+validator = { version = "0.18", features = ["derive"] }
+once_cell = "1.19"

@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
-use chimera_validator::Validate;
+use validator::Validate;
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+// 定义正则表达式用于验证
+static PHONE_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^1[3-9]\d{9}$").unwrap()
+});
 
 // ==================== 数据模型 ====================
 
@@ -41,12 +48,10 @@ pub struct LoginForm {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ValidatedLoginForm {
     #[serde(default)]
-    #[validate(not_blank(message = "用户名不能为空"))]
     #[validate(length(min = 3, max = 20, message = "用户名长度必须在3-20个字符之间"))]
     pub username: String,
 
     #[serde(default)]
-    #[validate(not_blank(message = "密码不能为空"))]
     #[validate(length(min = 6, message = "密码长度至少为6个字符"))]
     pub password: String,
 
@@ -64,12 +69,10 @@ pub struct CommentForm {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ValidatedCommentForm {
     #[serde(default)]
-    #[validate(not_blank(message = "作者名称不能为空"))]
     #[validate(length(min = 2, max = 50, message = "作者名称长度必须在2-50个字符之间"))]
     pub author: String,
 
     #[serde(default)]
-    #[validate(not_blank(message = "评论内容不能为空"))]
     #[validate(length(min = 10, max = 500, message = "评论内容长度必须在10-500个字符之间"))]
     pub content: String,
 
@@ -107,19 +110,16 @@ fn default_size() -> u32 { 10 }
 pub struct RegisterUserRequest {
     /// 用户名：不能为空，长度2-20个字符
     #[serde(default)]
-    #[validate(not_blank(message = "用户名不能为空"))]
     #[validate(length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间"))]
     pub username: String,
 
     /// 邮箱：不能为空，必须是有效的邮箱格式
     #[serde(default)]
-    #[validate(not_blank(message = "邮箱不能为空"))]
     #[validate(email(message = "请输入有效的邮箱地址"))]
     pub email: String,
 
     /// 密码：不能为空，最少8个字符
     #[serde(default)]
-    #[validate(not_blank(message = "密码不能为空"))]
     #[validate(length(min = 8, message = "密码长度至少为8个字符"))]
     pub password: String,
 
@@ -130,8 +130,7 @@ pub struct RegisterUserRequest {
 
     /// 手机号：必须匹配中国手机号格式
     #[serde(default)]
-    #[validate(not_blank(message = "手机号不能为空"))]
-    #[validate(pattern(regex = r"^1[3-9]\d{9}$", message = "请输入有效的手机号"))]
+    #[validate(regex(path = "*PHONE_REGEX", message = "请输入有效的手机号"))]
     pub phone: String,
 }
 
@@ -140,12 +139,11 @@ pub struct RegisterUserRequest {
 pub struct CreateProductRequest {
     /// 商品名称：不能为空
     #[serde(default)]
-    #[validate(not_blank(message = "商品名称不能为空"))]
+    #[validate(length(min = 1, message = "商品名称不能为空"))]
     pub name: String,
 
     /// 商品描述：不能为空，最少10个字符
     #[serde(default)]
-    #[validate(not_blank(message = "商品描述不能为空"))]
     #[validate(length(min = 10, message = "商品描述至少需要10个字符"))]
     pub description: String,
 
@@ -177,8 +175,8 @@ pub struct UpdateUserWithPhone {
     pub email: Option<String>,
 
     /// 手机号：可选，如果提供则验证格式（中国手机号）
-    /// 演示 Option<String> 使用 pattern 验证
-    #[validate(pattern(regex = r"^1[3-9]\d{9}$", message = "请输入有效的手机号"))]
+    /// 演示 Option<String> 使用 regex 验证
+    #[validate(regex(path = "*PHONE_REGEX", message = "请输入有效的手机号"))]
     pub phone: Option<String>,
 
     /// 年龄：可选，如果提供则验证范围
@@ -187,12 +185,12 @@ pub struct UpdateUserWithPhone {
     pub age: Option<u32>,
 
     /// 个人简介：可选，如果提供则不能为空
-    /// 演示 Option<String> 使用 not_empty 验证
-    #[validate(not_empty(message = "个人简介不能为空字符串"))]
+    /// 演示 Option<String> 使用 length 验证
+    #[validate(length(min = 1, message = "个人简介不能为空字符串"))]
     pub bio: Option<String>,
 
     /// 昵称：可选，如果提供则不能为空白
-    /// 演示 Option<String> 使用 not_blank 验证
-    #[validate(not_blank(message = "昵称不能为空白字符"))]
+    /// 演示 Option<String> 使用 length 验证
+    #[validate(length(min = 1, message = "昵称不能为空白字符"))]
     pub nickname: Option<String>,
 }

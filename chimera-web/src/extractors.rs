@@ -154,7 +154,7 @@ pub struct ValidatedRequestBody<T>(pub T);
 #[async_trait]
 impl<S, T> FromRequest<S> for ValidatedRequestBody<T>
 where
-    T: DeserializeOwned + chimera_validator::Validate,
+    T: DeserializeOwned + validator::Validate,
     S: Send + Sync,
 {
     type Rejection = WebError;
@@ -177,22 +177,30 @@ where
             })?;
 
         // 2. 执行验证
-        data.validate().map_err(|e| {
+        data.validate().map_err(|e: validator::ValidationErrors| {
             tracing::debug!(error = ?e, "Validation error");
 
-            match e {
-                chimera_validator::ValidationError::FieldErrors(field_errors) => {
-                    WebError::Validation {
-                        message: "Validation failed".to_string(),
-                        field_errors: Some(field_errors),
-                    }
+            // 将 validator::ValidationErrors 转换为 WebError
+            let mut field_errors = std::collections::HashMap::new();
+
+            for (field_name, field_errors_vec) in e.field_errors() {
+                let messages: Vec<String> = field_errors_vec
+                    .iter()
+                    .map(|error| {
+                        error.message.as_ref()
+                            .map(|cow| cow.to_string())
+                            .unwrap_or_else(|| format!("Validation failed for field: {}", field_name))
+                    })
+                    .collect();
+
+                if !messages.is_empty() {
+                    field_errors.insert(field_name.to_string(), messages);
                 }
-                chimera_validator::ValidationError::ValidationFailed(msg) => {
-                    WebError::Validation {
-                        message: msg,
-                        field_errors: None,
-                    }
-                }
+            }
+
+            WebError::Validation {
+                message: "Validation failed".to_string(),
+                field_errors: Some(field_errors),
             }
         })?;
 
@@ -270,7 +278,7 @@ pub struct ValidatedRequestParam<T>(pub T);
 #[async_trait]
 impl<S, T> FromRequestParts<S> for ValidatedRequestParam<T>
 where
-    T: DeserializeOwned + chimera_validator::Validate,
+    T: DeserializeOwned + validator::Validate,
     S: Send + Sync,
 {
     type Rejection = WebError;
@@ -289,22 +297,30 @@ where
             })?;
 
         // 2. 执行验证
-        data.validate().map_err(|e| {
+        data.validate().map_err(|e: validator::ValidationErrors| {
             tracing::debug!(error = ?e, "Validation error");
 
-            match e {
-                chimera_validator::ValidationError::FieldErrors(field_errors) => {
-                    WebError::Validation {
-                        message: "Validation failed".to_string(),
-                        field_errors: Some(field_errors),
-                    }
+            // 将 validator::ValidationErrors 转换为 WebError
+            let mut field_errors = std::collections::HashMap::new();
+
+            for (field_name, field_errors_vec) in e.field_errors() {
+                let messages: Vec<String> = field_errors_vec
+                    .iter()
+                    .map(|error| {
+                        error.message.as_ref()
+                            .map(|cow| cow.to_string())
+                            .unwrap_or_else(|| format!("Validation failed for field: {}", field_name))
+                    })
+                    .collect();
+
+                if !messages.is_empty() {
+                    field_errors.insert(field_name.to_string(), messages);
                 }
-                chimera_validator::ValidationError::ValidationFailed(msg) => {
-                    WebError::Validation {
-                        message: msg,
-                        field_errors: None,
-                    }
-                }
+            }
+
+            WebError::Validation {
+                message: "Validation failed".to_string(),
+                field_errors: Some(field_errors),
             }
         })?;
 
@@ -388,7 +404,7 @@ pub struct ValidatedFormData<T>(pub T);
 #[async_trait]
 impl<S, T> FromRequest<S> for ValidatedFormData<T>
 where
-    T: DeserializeOwned + chimera_validator::Validate,
+    T: DeserializeOwned + validator::Validate,
     S: Send + Sync,
 {
     type Rejection = WebError;
@@ -407,22 +423,30 @@ where
             })?;
 
         // 2. 执行验证
-        data.validate().map_err(|e| {
+        data.validate().map_err(|e: validator::ValidationErrors| {
             tracing::debug!(error = ?e, "Validation error");
 
-            match e {
-                chimera_validator::ValidationError::FieldErrors(field_errors) => {
-                    WebError::Validation {
-                        message: "Validation failed".to_string(),
-                        field_errors: Some(field_errors),
-                    }
+            // 将 validator::ValidationErrors 转换为 WebError
+            let mut field_errors = std::collections::HashMap::new();
+
+            for (field_name, field_errors_vec) in e.field_errors() {
+                let messages: Vec<String> = field_errors_vec
+                    .iter()
+                    .map(|error| {
+                        error.message.as_ref()
+                            .map(|cow| cow.to_string())
+                            .unwrap_or_else(|| format!("Validation failed for field: {}", field_name))
+                    })
+                    .collect();
+
+                if !messages.is_empty() {
+                    field_errors.insert(field_name.to_string(), messages);
                 }
-                chimera_validator::ValidationError::ValidationFailed(msg) => {
-                    WebError::Validation {
-                        message: msg,
-                        field_errors: None,
-                    }
-                }
+            }
+
+            WebError::Validation {
+                message: "Validation failed".to_string(),
+                field_errors: Some(field_errors),
             }
         })?;
 
