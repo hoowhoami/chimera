@@ -97,6 +97,34 @@ impl ApplicationContext {
         }
     }
 
+    /// 验证当前 runtime 是否支持 block_in_place
+    ///
+    /// 检查：
+    /// 1. 是否在 tokio runtime 中
+    /// 2. 是否是多线程 runtime（block_in_place 不支持 current_thread runtime）
+    ///
+    /// 这是一个公共方法，其他模块也可以使用它来验证 runtime 环境
+    pub fn validate_runtime_for_blocking() -> ContainerResult<tokio::runtime::Handle> {
+        let handle = tokio::runtime::Handle::try_current().map_err(|_| {
+            ContainerError::Other(anyhow::anyhow!(
+                "Synchronous method must be called within a tokio runtime. \
+                 Consider using the async version instead."
+            ))
+        })?;
+
+        // 检查 runtime 类型
+        match handle.runtime_flavor() {
+            tokio::runtime::RuntimeFlavor::CurrentThread => {
+                Err(ContainerError::Other(anyhow::anyhow!(
+                    "Synchronous methods cannot be used with current_thread runtime. \
+                     Please use a multi_thread runtime or use the async version instead."
+                )))
+            }
+            tokio::runtime::RuntimeFlavor::MultiThread => Ok(handle),
+            _ => Ok(handle), // 其他未来可能的 runtime 类型
+        }
+    }
+
     /// 设置应用名称
     pub async fn set_app_name(&self, name: String) {
         let mut app_name = self.app_name.write().await;
@@ -208,10 +236,45 @@ impl ApplicationContext {
     ///
     /// 这是 get_bean 的同步版本，使用 tokio::task::block_in_place 实现
     /// 适合在同步代码中调用，会阻塞当前线程直到 Bean 获取完成
+    ///
+    /// # 限制
+    /// - 必须在 tokio multi_thread runtime 中调用
+    /// - 默认超时时间为 30 秒
+    ///
+    /// # 错误
+    /// - 如果不在 tokio runtime 中调用会返回错误
+    /// - 如果在 current_thread runtime 中调用会返回错误
+    /// - 如果获取超时会返回错误
     pub fn get_bean_sync(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+        self.get_bean_sync_with_timeout(name, std::time::Duration::from_secs(30))
+    }
+
+    /// 同步方式获取 Bean（通过名称，带超时）
+    ///
+    /// 与 get_bean_sync 类似，但允许自定义超时时间
+    ///
+    /// # 参数
+    /// - `name`: Bean 名称
+    /// - `timeout`: 超时时间
+    pub fn get_bean_sync_with_timeout(
+        &self,
+        name: &str,
+        timeout: std::time::Duration,
+    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+        let handle = Self::validate_runtime_for_blocking()?;
+
         tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async { self.get_bean(name).await })
+            handle.block_on(async {
+                tokio::time::timeout(timeout, self.get_bean(name))
+                    .await
+                    .map_err(|_| {
+                        ContainerError::Other(anyhow::anyhow!(
+                            "Timeout while getting bean '{}' after {:?}",
+                            name,
+                            timeout
+                        ))
+                    })?
+            })
         })
     }
 
@@ -219,10 +282,43 @@ impl ApplicationContext {
     ///
     /// 这是 get_bean_by_type 的同步版本，使用 tokio::task::block_in_place 实现
     /// 适合在同步代码中调用，会阻塞当前线程直到 Bean 获取完成
+    ///
+    /// # 限制
+    /// - 必须在 tokio multi_thread runtime 中调用
+    /// - 默认超时时间为 30 秒
+    ///
+    /// # 错误
+    /// - 如果不在 tokio runtime 中调用会返回错误
+    /// - 如果在 current_thread runtime 中调用会返回错误
+    /// - 如果获取超时会返回错误
     pub fn get_bean_by_type_sync<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>> {
+        self.get_bean_by_type_sync_with_timeout(std::time::Duration::from_secs(30))
+    }
+
+    /// 同步方式获取 Bean（通过类型，带超时）
+    ///
+    /// 与 get_bean_by_type_sync 类似，但允许自定义超时时间
+    ///
+    /// # 参数
+    /// - `timeout`: 超时时间
+    pub fn get_bean_by_type_sync_with_timeout<T: Any + Send + Sync>(
+        &self,
+        timeout: std::time::Duration,
+    ) -> ContainerResult<Arc<T>> {
+        let handle = Self::validate_runtime_for_blocking()?;
+
         tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async { self.get_bean_by_type::<T>().await })
+            handle.block_on(async {
+                tokio::time::timeout(timeout, self.get_bean_by_type::<T>())
+                    .await
+                    .map_err(|_| {
+                        ContainerError::Other(anyhow::anyhow!(
+                            "Timeout while getting bean of type '{}' after {:?}",
+                            std::any::type_name::<T>(),
+                            timeout
+                        ))
+                    })?
+            })
         })
     }
 
@@ -534,9 +630,11 @@ impl Container for ApplicationContext {
             definition.scope
         );
 
+        // 验证 runtime 环境
+        let handle = Self::validate_runtime_for_blocking()?;
+
         // 使用 blocking 方式访问（仅用于注册，不在异步上下文中）
         tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
             handle.block_on(async {
                 // 检查是否已存在
                 {
@@ -720,41 +818,104 @@ impl Container for ApplicationContext {
     }
 
     fn contains_bean(&self, name: &str) -> bool {
-        tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async { self.definitions.read().await.contains_key(name) })
-        })
+        // 尝试非阻塞读取（快速路径）
+        if let Ok(definitions) = self.definitions.try_read() {
+            return definitions.contains_key(name);
+        }
+
+        // 快速路径失败，检查是否在合适的 runtime 中
+        match Self::validate_runtime_for_blocking() {
+            Ok(handle) => {
+                // 降级到 block_in_place（慢速路径）
+                tokio::task::block_in_place(|| {
+                    handle.block_on(async { self.definitions.read().await.contains_key(name) })
+                })
+            }
+            Err(_) => {
+                // 如果不在合适的 runtime 中，记录警告并返回 false
+                tracing::warn!(
+                    "contains_bean called outside valid runtime context, returning false"
+                );
+                false
+            }
+        }
     }
 
     fn contains_bean_by_type<T: Any + Send + Sync>(&self) -> bool {
         let type_id = TypeId::of::<T>();
         let type_name = std::any::type_name::<T>();
 
-        tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async {
-                // TypeId查找
-                if self.type_to_name.read().await.contains_key(&type_id) {
-                    return true;
-                }
-
-                // TypeId查找失败，尝试类型名称
-                let definitions = self.definitions.read().await;
+        // 尝试非阻塞读取（快速路径）
+        if let Ok(type_to_name) = self.type_to_name.try_read() {
+            if type_to_name.contains_key(&type_id) {
+                return true;
+            }
+            // 尝试按类型名称查找
+            drop(type_to_name);
+            if let Ok(definitions) = self.definitions.try_read() {
                 for definition in definitions.values() {
                     if definition.factory.type_name() == type_name {
                         return true;
                     }
                 }
+                return false;
+            }
+        }
+
+        // 快速路径失败，检查是否在合适的 runtime 中
+        match Self::validate_runtime_for_blocking() {
+            Ok(handle) => {
+                // 降级到 block_in_place（慢速路径）
+                tokio::task::block_in_place(|| {
+                    handle.block_on(async {
+                        // TypeId 查找
+                        if self.type_to_name.read().await.contains_key(&type_id) {
+                            return true;
+                        }
+
+                        // TypeId 查找失败，尝试类型名称
+                        let definitions = self.definitions.read().await;
+                        for definition in definitions.values() {
+                            if definition.factory.type_name() == type_name {
+                                return true;
+                            }
+                        }
+                        false
+                    })
+                })
+            }
+            Err(_) => {
+                // 如果不在合适的 runtime 中，记录警告并返回 false
+                tracing::warn!(
+                    "contains_bean_by_type called outside valid runtime context, returning false"
+                );
                 false
-            })
-        })
+            }
+        }
     }
 
     fn get_bean_names(&self) -> Vec<String> {
-        tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async { self.definitions.read().await.keys().cloned().collect() })
-        })
+        // 尝试非阻塞读取（快速路径）
+        if let Ok(definitions) = self.definitions.try_read() {
+            return definitions.keys().cloned().collect();
+        }
+
+        // 快速路径失败，检查是否在合适的 runtime 中
+        match Self::validate_runtime_for_blocking() {
+            Ok(handle) => {
+                // 降级到 block_in_place（慢速路径）
+                tokio::task::block_in_place(|| {
+                    handle.block_on(async { self.definitions.read().await.keys().cloned().collect() })
+                })
+            }
+            Err(_) => {
+                // 如果不在合适的 runtime 中，记录警告并返回空列表
+                tracing::warn!(
+                    "get_bean_names called outside valid runtime context, returning empty list"
+                );
+                Vec::new()
+            }
+        }
     }
 }
 

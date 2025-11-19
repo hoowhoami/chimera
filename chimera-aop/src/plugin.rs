@@ -107,8 +107,11 @@ impl ApplicationPlugin for AopPlugin {
         // 我们需要在运行时阻塞调用异步方法
         let aop_processor = Arc::new(crate::AopBeanPostProcessor::new());
 
+        // 验证 runtime 环境并注册处理器
+        let handle = chimera_core::ApplicationContext::validate_runtime_for_blocking()
+            .map_err(|e| chimera_core::ApplicationError::Container(e))?;
+
         tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
             handle.block_on(async {
                 context.add_bean_post_processor(aop_processor).await;
             })

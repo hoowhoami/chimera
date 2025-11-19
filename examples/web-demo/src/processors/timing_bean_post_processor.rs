@@ -47,7 +47,6 @@ impl BeanPostProcessor for TimingBeanPostProcessor {
         bean_name: &str,
     ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
         let mut times = self.start_times.lock().unwrap();
-        println!("ApplicationContext get active profiles: {:?}", self.app_context.environment().get_active_profiles());
         if let Some(start_time) = times.remove(bean_name) {
             let elapsed = start_time.elapsed();
             if elapsed.as_millis() > 10 {
