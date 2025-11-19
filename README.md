@@ -277,7 +277,6 @@ active = ["dev"]  # 激活的 profiles
 
 ### 核心框架
 - [ ] 完善 AOP 切面编程
-- [ ] 提供 Bean 工厂扩展机制
 
 ### Web 框架
 - [ ] 添加文件上传支持（multipart/form-data）
