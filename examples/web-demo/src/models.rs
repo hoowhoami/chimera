@@ -129,6 +129,7 @@ pub struct RegisterUserRequest {
     pub age: u32,
 
     /// 手机号：必须匹配中国手机号格式
+    #[serde(default)]
     #[validate(not_blank(message = "手机号不能为空"))]
     #[validate(pattern(regex = r"^1[3-9]\d{9}$", message = "请输入有效的手机号"))]
     pub phone: String,
