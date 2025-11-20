@@ -8,8 +8,6 @@ chimera-core = { workspace = true }
 chimera-core-macros = { path = "../../chimera-core-macros" }
 chimera-web = { path = "../../chimera-web" }
 chimera-web-macros = { path = "../../chimera-web-macros" }
-chimera-aop = { path = "../../chimera-aop" }
-chimera-aop-macros = { path = "../../chimera-aop-macros" }
 
 tokio = { workspace = true }
 serde = { workspace = true }

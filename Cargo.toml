@@ -5,8 +5,6 @@ members = [
     "chimera-core-macros",
     "chimera-web",
     "chimera-web-macros",
-    "chimera-aop",
-    "chimera-aop-macros",
     "examples/app-demo",
     "examples/web-demo",
 ]

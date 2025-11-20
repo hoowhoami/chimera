@@ -157,8 +157,6 @@ chimera/
 ├── chimera-core-macros/   # 核心宏定义
 ├── chimera-web/           # Web 框架
 ├── chimera-web-macros/    # Web 宏定义
-├── chimera-aop/           # AOP 框架
-├── chimera-aop-macros/    # AOP 宏定义
 └── examples/
     ├── app-demo/          # 依赖注入示例
     │   ├── src/
@@ -276,9 +274,6 @@ active = ["dev"]  # 激活的 profiles
 - **渐进式** - 支持从简单到复杂的渐进式使用
 
 ## 后续规划
-
-### 核心框架
-- [ ] 完善 AOP 切面编程
 
 ### Web 框架
 - [ ] 添加文件上传支持（multipart/form-data）
