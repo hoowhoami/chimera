@@ -17,7 +17,7 @@ use validator::ValidationError;
 pub fn not_blank(value: &str) -> Result<(), ValidationError> {
     if value.trim().is_empty() {
         let mut error = ValidationError::new("not_blank");
-        error.message = Some("字段不能为空或仅包含空白字符".into());
+        error.message = Some("field must not be blank".into());
         Err(error)
     } else {
         Ok(())
