@@ -1,5 +1,5 @@
 use chimera_core::prelude::*;
-use chimera_core_macros::Component;
+use chimera_core_macros::{component, Component};
 use std::sync::Arc;
 
 use crate::config::AppConfig;
@@ -12,6 +12,7 @@ pub struct UserService {
     _config: Arc<AppConfig>,
 }
 
+#[component]
 impl UserService {
     pub fn list_users(&self) -> Vec<User> {
         vec![

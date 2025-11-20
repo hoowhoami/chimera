@@ -1,5 +1,5 @@
 use chimera_core::prelude::*;
-use chimera_core_macros::Component;
+use chimera_core_macros::{component, Component};
 use chimera_web::prelude::*;
 use chimera_web_macros::{controller, get_mapping, request_mapping};
 use serde_json::json;
@@ -18,6 +18,7 @@ pub struct ApiController {
     config: Arc<AppConfig>,
 }
 
+#[component]
 #[controller]
 impl ApiController {
     // ========== 无参数方法 ==========

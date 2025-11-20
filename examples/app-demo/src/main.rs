@@ -1,5 +1,5 @@
 use chimera_core::prelude::*;
-use chimera_core_macros::{Component, ConfigurationProperties};
+use chimera_core_macros::{component, Component, ConfigurationProperties};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -80,6 +80,7 @@ struct SystemService {
     test: String,
 }
 
+#[component]
 impl SystemService {
     async fn demonstrate_core_components(&self) -> ApplicationResult<()> {
         println!("System Service - Core Components Injection Demo:");
@@ -172,6 +173,7 @@ struct CacheService {
     redis_config: Arc<RedisConfig>,
 }
 
+#[component]
 impl CacheService {
     fn set(&self, key: &str, value: &str) -> ApplicationResult<()> {
         println!(
@@ -199,6 +201,7 @@ struct DatabaseService {
     config: Arc<DatabaseConfig>,
 }
 
+#[component]
 impl DatabaseService {
     fn init(&mut self) -> ContainerResult<()> {
         println!("Database connecting to: {}", self.config.url);
@@ -236,6 +239,7 @@ struct UserService {
     app_config: Arc<AppConfig>,
 }
 
+#[component]
 impl UserService {
     fn register_user(&self, username: &str) -> ApplicationResult<String> {
         let user_id = format!("user_{}", rand::random::<u32>());
@@ -288,6 +292,7 @@ struct OrderService {
     metrics: Option<Arc<MetricsService>>,
 }
 
+#[component]
 impl OrderService {
     fn create_order(&self, order_id: &str, amount: i64) -> ApplicationResult<()> {
         println!("Creating order: {} (amount: {})", order_id, amount);
@@ -317,6 +322,7 @@ struct PaymentService {
     optional_service: Option<Arc<CacheService>>,
 }
 
+#[component]
 impl PaymentService {
     fn process_payment(&self, amount: i64) -> ApplicationResult<()> {
         println!("💳 Processing payment: {}", amount);
@@ -340,6 +346,7 @@ struct NotificationService {
     app_config: Arc<AppConfig>,
 }
 
+#[component]
 impl EventListener for NotificationService {
     fn on_event(&self, event: Arc<dyn Event>) {
         match event.event_name() {
@@ -375,6 +382,7 @@ impl EventListener for NotificationService {
 #[derive(Component, Clone, Debug)]
 struct AuditService;
 
+#[component]
 impl TypedEventListener<UserRegisteredEvent> for AuditService {
     fn on_event(&self, event: &UserRegisteredEvent) {
         println!(

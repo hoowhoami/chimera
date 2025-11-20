@@ -57,12 +57,57 @@ serde_json = "1"
 
 1. **定义配置** - 使用 `@ConfigurationProperties` 绑定配置，放在 `config/application.toml`
 2. **定义服务** - 使用 `@Component` 标记组件，`@autowired` 注入依赖
-3. **启动应用** - 调用 `ChimeraApplication::new().run().await` 一行启动
-4. **使用服务** - 框架自动注册路由，或从 ApplicationContext 获取 Bean 并调用
+3. **定义 impl 块** - 使用 `@component` 标记 Component 的 impl 块（必须）
+4. **启动应用** - 调用 `ChimeraApplication::new().run().await` 一行启动
+5. **使用服务** - 框架自动注册路由，或从 ApplicationContext 获取 Bean 并调用
 
 详细代码示例请参考：
 - `examples/app-demo` - 依赖注入、配置管理、事件系统示例
 - `examples/web-demo` - Web 框架、Controller、参数验证示例
+
+## 核心注解
+
+### @component - Component impl 块标记
+
+**所有使用 `#[derive(Component)]` 的类型，其 impl 块都必须添加 `#[component]` 属性**。
+
+这个属性宏会自动检查方法名是否与 Component trait 的保留方法冲突，**在编译时直接报错**。
+
+```rust
+use chimera_core::prelude::*;
+use chimera_core_macros::{component, Component};
+
+#[derive(Component)]
+#[bean("userService")]
+struct UserService {
+    #[autowired]
+    db: Arc<DatabaseService>,
+}
+
+#[component]  // ✅ 必须添加
+impl UserService {
+    pub fn create_user(&self) { }   // ✅ OK
+    pub fn user_register(&self) { } // ✅ OK
+    pub fn register(&self) { }      // ❌ 编译错误：与 Component::register 冲突
+}
+```
+
+**注意**：Controller 类型的 impl 块需要同时使用 `#[component]` 和 `#[controller]`：
+- `#[component]` 负责方法名检查
+- `#[controller]` 负责路由处理
+
+```rust
+#[controller("/api")]
+#[derive(Component, Clone)]
+pub struct ApiController { ... }
+
+#[component]    // 方法名检查
+#[controller]   // 路由处理
+impl ApiController {
+    #[get_mapping("/info")]
+    async fn get_info(&self) -> impl IntoResponse { ... }
+}
+```
 
 ## 核心特性
 
@@ -195,6 +240,7 @@ your-project/
 | 注解 | 作用 | 示例 |
 |------|------|------|
 | `#[derive(Component)]` | 标记为自动装配组件 | 服务类、仓库类 |
+| `#[component]` | 标记 Component 的 impl 块 | 必须用于 impl 块 |
 | `#[derive(ConfigurationProperties)]` | 批量绑定配置 | 配置类 |
 | `#[autowired]` | 自动注入依赖 | 字段依赖注入 |
 | `#[autowired("beanName")]` | 按名称注入依赖 | 命名 Bean 注入 |
@@ -205,6 +251,29 @@ your-project/
 | `#[init]` | 初始化回调 | Bean 创建后执行 |
 | `#[destroy]` | 销毁回调 | Bean 销毁前执行 |
 | `#[event_listener]` | 事件监听器 | 监听应用事件 |
+
+**⚠️ Component 保留方法名**
+
+使用 `#[derive(Component)]` 的类型会自动实现 `Component` trait，该 trait 保留了以下方法名：
+
+- `bean_name()`, `scope()`, `lazy()`, `dependencies()`
+- `init_callback()`, `destroy_callback()`
+- `is_event_listener()`, `as_event_listener()`
+- `create_from_context()`, `register()`
+
+**在 Component impl 块中使用这些方法名会导致编译错误**，例如：
+
+```rust
+// ❌ 错误：register 与 Component trait 冲突
+#[post_mapping("/register")]
+async fn register(&self, ...) { }
+
+// ✅ 正确：使用不同的方法名
+#[post_mapping("/register")]
+async fn user_register(&self, ...) { }
+```
+
+框架使用 `#[component]` 属性宏在编译时检查方法名，如果使用了保留方法名会立即报错。
 
 ### Web 框架注解
 

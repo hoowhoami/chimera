@@ -24,7 +24,7 @@ pub fn controller_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // 都不是，返回错误
     let error = quote! {
-        compile_error!("controller 宏只能用于 struct 或 impl 块");
+        compile_error!("controller macro can only be used on struct or impl block");
     };
     TokenStream::from(error)
 }
@@ -108,12 +108,10 @@ fn handle_controller_impl(_attr: TokenStream, input: ItemImpl) -> TokenStream {
                                         use ::chimera_web::prelude::IntoResponse;
                                         controller.#method_name().await.into_response()
                                     }
-                                    Err(_) => {
+                                    Err(e) => {
                                         use ::chimera_web::prelude::IntoResponse;
-                                        (
-                                            ::chimera_web::prelude::axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                                            "Controller bean not found"
-                                        ).into_response()
+                                        ::tracing::error!("Failed to get controller bean {}: {:?}", stringify!(#self_ty), e);
+                                        ::chimera_web::prelude::axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
                                     }
                                 }
                             })
@@ -144,12 +142,10 @@ fn handle_controller_impl(_attr: TokenStream, input: ItemImpl) -> TokenStream {
                                             use ::chimera_web::prelude::IntoResponse;
                                             controller.#method_name(#(#param_names),*).await.into_response()
                                         }
-                                        Err(_) => {
+                                        Err(e) => {
                                             use ::chimera_web::prelude::IntoResponse;
-                                            (
-                                                ::chimera_web::prelude::axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                                                "Controller bean not found"
-                                            ).into_response()
+                                            ::tracing::error!("Failed to get controller bean {}: {:?}", stringify!(#self_ty), e);
+                                            ::chimera_web::prelude::axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
                                         }
                                     }
                                 }

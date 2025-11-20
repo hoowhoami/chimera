@@ -1,10 +1,10 @@
 use crate::models::{RegisterUserRequest, SearchQuery, UserLoginRequest};
 use crate::service::UserService;
 use chimera_core::prelude::*;
-use chimera_core_macros::Component;
-use chimera_web::extractors::ValidatedRequestBody;
+use chimera_core_macros::{component, Component};
+use chimera_web::extractors::{RequestParam, ValidatedFormData, ValidatedRequestBody};
 use chimera_web::prelude::*;
-use chimera_web_macros::{controller, post_mapping};
+use chimera_web_macros::{controller, get_mapping, post_mapping, request_mapping};
 use std::sync::Arc;
 
 /// 用户 Controller
@@ -17,13 +17,11 @@ pub struct UserController {
     user_service: Arc<UserService>,
 }
 
+#[component]
 #[controller]
 impl UserController {
-    #[post_mapping("/search")]
-    async fn search(
-        &self,
-        RequestParam(query): RequestParam<SearchQuery>,
-    ) -> impl IntoResponse {
+    #[request_mapping("/search")]
+    async fn search(&self, RequestParam(query): RequestParam<SearchQuery>) -> impl IntoResponse {
         let users = self.user_service.search_users(query);
         ResponseEntity::ok(serde_json::json!({
             "success": true,
@@ -32,8 +30,19 @@ impl UserController {
         }))
     }
 
+    #[get_mapping("/:id")]
+    async fn get_user(&self, PathVariable(id): PathVariable<u32>) -> impl IntoResponse {
+        let user = self.user_service.get_user_by_id(id);
+        ResponseEntity::ok(serde_json::json!({
+            "success": true,
+            "message": "search success",
+            "data": user
+        }))
+    }
+
+    /// 用户注册
     #[post_mapping("/register")]
-    async fn register(
+    async fn user_register(
         &self,
         ValidatedRequestBody(user): ValidatedRequestBody<RegisterUserRequest>,
     ) -> impl IntoResponse {
@@ -47,12 +56,14 @@ impl UserController {
     #[post_mapping("/login")]
     async fn login(
         &self,
-        ValidatedFormData(user): ValidatedFormData<UserLoginRequest>,
+        ValidatedFormData(login_form): ValidatedFormData<UserLoginRequest>,
     ) -> impl IntoResponse {
         ResponseEntity::ok(serde_json::json!({
             "success": true,
             "message": "login success",
-            "data": user
+            "data": {
+                "username": login_form.username
+            }
         }))
     }
 }

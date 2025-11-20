@@ -2,10 +2,12 @@ mod attribute_helpers;
 mod value_injection;
 mod config_properties_impl;
 mod component_impl;
+mod component_attr;
 mod bean_impl;
 mod bean_post_processor_impl;
 
 use proc_macro::TokenStream;
+use proc_macro_error::proc_macro_error;
 
 /// Component派生宏
 ///
@@ -93,4 +95,42 @@ pub fn derive_configuration_properties(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(BeanPostProcessor)]
 pub fn derive_bean_post_processor(input: TokenStream) -> TokenStream {
     bean_post_processor_impl::derive_bean_post_processor_impl(input)
+}
+
+/// Component 属性宏
+///
+/// 用于标记 Component 类型的 impl 块，自动检查方法名是否与 Component trait 的保留方法冲突
+///
+/// **必须用于所有 Component 类型的 impl 块**，否则可能导致方法名冲突
+///
+/// # Component trait 保留的方法名
+///
+/// - `bean_name()`, `scope()`, `lazy()`, `dependencies()`
+/// - `init_callback()`, `destroy_callback()`
+/// - `is_event_listener()`, `as_event_listener()`
+/// - `create_from_context()`, `register()`
+///
+/// # 用法
+///
+/// ```ignore
+/// use chimera_core::prelude::*;
+/// use chimera_core_macros::Component;
+///
+/// #[derive(Component)]
+/// struct UserService {
+///     #[autowired]
+///     db: Arc<DatabaseService>,
+/// }
+///
+/// #[component]  // 必须添加此属性
+/// impl UserService {
+///     pub fn create_user(&self) { }   // ✅ OK
+///     pub fn user_register(&self) { } // ✅ OK
+///     pub fn register(&self) { }      // ❌ 编译错误：与 Component::register 冲突
+/// }
+/// ```
+#[proc_macro_attribute]
+#[proc_macro_error]
+pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
+    component_attr::component_impl(attr, item)
 }
