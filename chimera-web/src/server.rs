@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 
 use crate::{
+    constants::*,
     exception_handler::{build_exception_handler_registry, GlobalExceptionHandlerRegistry},
     middleware::{global_exception_handler, request_id, request_logging},
     controller::get_all_controllers,
@@ -58,17 +59,17 @@ impl ServerProperties {
     pub fn from_environment(env: &Environment) -> Self {
         Self {
             host: env
-                .get_string("server.host")
+                .get_string(SERVER_HOST)
                 .unwrap_or_else(|| "0.0.0.0".to_string()),
-            port: env.get_i64("server.port").unwrap_or(8080) as u16,
-            workers: env.get_i64("server.workers").unwrap_or(0) as usize,
-            request_timeout: env.get_i64("server.request-timeout").unwrap_or(30) as u64,
-            enable_cors: env.get_bool("server.enable-cors").unwrap_or(false),
+            port: env.get_i64(SERVER_PORT).unwrap_or(8080) as u16,
+            workers: env.get_i64(SERVER_WORKERS).unwrap_or(0) as usize,
+            request_timeout: env.get_i64(SERVER_REQUEST_TIMEOUT).unwrap_or(30) as u64,
+            enable_cors: env.get_bool(SERVER_ENABLE_CORS).unwrap_or(false),
             enable_request_logging: env
-                .get_bool("server.enable-request-logging")
+                .get_bool(SERVER_ENABLE_REQUEST_LOGGING)
                 .unwrap_or(true),
             enable_global_exception_handling: env
-                .get_bool("server.enable-global-exception-handling")
+                .get_bool(SERVER_ENABLE_GLOBAL_EXCEPTION_HANDLING)
                 .unwrap_or(true),
         }
     }

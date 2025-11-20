@@ -4,6 +4,7 @@
 
 use chimera_core::prelude::*;
 use crate::server::ServerProperties;
+use crate::multipart::MultipartProperties;
 use crate::server::ChimeraWebServer;
 use std::sync::Arc;
 
@@ -28,18 +29,27 @@ impl ApplicationPlugin for WebPlugin {
         90 // Web 插件优先级较低，在其他插件之后配置
     }
 
-    /// 配置阶段 - 注册 ServerProperties
+    /// 配置阶段 - 注册 ServerProperties 和 MultipartProperties
     fn configure(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
         let env = Arc::clone(context.environment());
 
         // 注册 ServerProperties Bean
         context
-            .register_singleton("serverProperties", move || {
-                Ok(ServerProperties::from_environment(&env))
+            .register_singleton("serverProperties", {
+                let env = Arc::clone(&env);
+                move || Ok(ServerProperties::from_environment(&env))
             })
             .map_err(|e| ApplicationError::Container(e))?;
 
-        tracing::info!("ServerProperties configured");
+        // 注册 MultipartProperties Bean
+        context
+            .register_singleton("multipartProperties", {
+                let env = Arc::clone(&env);
+                move || Ok(MultipartProperties::from_environment(&env))
+            })
+            .map_err(|e| ApplicationError::Container(e))?;
+
+        tracing::info!("ServerProperties and MultipartProperties configured");
         Ok(())
     }
 

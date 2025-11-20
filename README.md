@@ -125,7 +125,11 @@ impl ApiController {
   - `ValidatedRequestParam<T>` - 自动验证的 query 参数（类似 @Valid @RequestParam）
   - `FormData<T>` - 从表单数据提取（类似 @ModelAttribute）
   - `ValidatedFormData<T>` - 自动验证的表单数据（类似 @Valid @ModelAttribute）
+  - `Multipart` - 手动处理 multipart/form-data 文件上传
+  - `MultipartForm<T>` - 自动提取文件和表单字段（类似 @ModelAttribute）
+  - `ValidatedMultipartForm<T>` - 自动验证的提取文件和表单字段（类似 @Valid @ModelAttribute）
   - `RequestHeaders` - 提取 HTTP 请求头（类似 @RequestHeader）
+- **文件上传** - 基于 multer 的文件上传支持，可配置文件大小限制
 - **参数验证** - 基于标准 `validator` 库的自动验证，支持自定义错误消息
 - **全局异常处理** - 类似 Spring Boot 的 @ControllerAdvice
 - **类型安全** - 编译时检查所有参数类型
@@ -317,6 +321,10 @@ async = false  # 是否异步处理事件
 
 [chimera.profiles]
 active = ["dev"]  # 激活的 profiles
+
+[chimera.web.multipart]
+max-file-size = 10485760  # 最大文件大小（字节），默认 10MB
+max-fields = 100          # 最大字段数量，默认 100
 ```
 
 环境变量前缀为 `CHIMERA_`，例如：
@@ -344,7 +352,6 @@ active = ["dev"]  # 激活的 profiles
 ## 后续规划
 
 ### Web 框架
-- [ ] 添加文件上传支持（multipart/form-data）
 - [ ] 添加 WebSocket 支持
 - [ ] 支持 OpenAPI/Swagger 文档自动生成
 - [ ] 支持 gRPC

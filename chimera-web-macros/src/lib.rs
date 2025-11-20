@@ -5,6 +5,7 @@
 mod exception_handler;
 mod route;
 mod utils;
+mod from_multipart;
 
 use proc_macro::TokenStream;
 
@@ -120,4 +121,48 @@ pub fn patch_mapping(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn request_mapping(attr: TokenStream, item: TokenStream) -> TokenStream {
     route::route_mapping_impl("any", attr, item)
+}
+
+/// FromMultipart 派生宏
+///
+/// 自动实现 FromMultipart trait，用于从 multipart/form-data 反序列化结构体
+///
+/// # 支持的字段类型
+///
+/// - `String`, `i32`, `bool` 等可解析类型 - 普通表单字段
+/// - `Option<String>`, `Option<i32>` 等 - 可选表单字段
+/// - `MultipartFile` - 单个必需文件
+/// - `Option<MultipartFile>` - 可选文件
+/// - `Vec<MultipartFile>` - 多文件上传
+///
+/// # 示例
+///
+/// ```ignore
+/// use chimera_web::multipart::{MultipartForm, MultipartFile};
+/// use chimera_web_macros::FromMultipart;
+/// use serde::Deserialize;
+/// use validator::Validate;
+///
+/// #[derive(Debug, Deserialize, Validate, FromMultipart)]
+/// struct UploadForm {
+///     #[validate(length(min = 1))]
+///     title: String,
+///
+///     description: Option<String>,
+///
+///     avatar: MultipartFile,
+///
+///     documents: Vec<MultipartFile>,
+/// }
+///
+/// #[post_mapping("/upload")]
+/// async fn upload(MultipartForm(form): MultipartForm<UploadForm>) -> impl IntoResponse {
+///     println!("Title: {}", form.title);
+///     println!("Avatar size: {}", form.avatar.size());
+///     ResponseEntity::ok("Success")
+/// }
+/// ```
+#[proc_macro_derive(FromMultipart)]
+pub fn derive_from_multipart(input: TokenStream) -> TokenStream {
+    from_multipart::derive_from_multipart_impl(input)
 }

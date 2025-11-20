@@ -13,12 +13,14 @@ validator = { version = "0.18", features = ["derive"] }
 
 # Web 框架 - Axum
 axum = "0.7"
+multer = "3.0"
 tower = "0.4"
 tower-http = { version = "0.5", features = ["trace", "cors", "compression-full"] }
 
-# 异步运行时
+# Async runtime
 tokio = { workspace = true }
 futures-util = "0.3"
+bytes = "1.0"
 
 # 序列化
 serde = { workspace = true }
