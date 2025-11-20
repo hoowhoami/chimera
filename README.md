@@ -210,8 +210,7 @@ your-project/
 
 | 注解 | 作用 | 示例 |
 |------|------|------|
-| `#[derive(Controller)]` | 标记为控制器 | 定义 REST API |
-| `#[route("/path")]` | 指定控制器基础路径 | `/api`, `/users` |
+| `#[controller("/path")]` | 标记结构体为控制器并指定基础路径 | `#[controller("/api")]` |
 | `#[controller]` | 标记 impl 块为控制器实现 | 自动注册方法路由 |
 | `#[get_mapping("/path")]` | 映射 GET 请求 | 查询操作 |
 | `#[post_mapping("/path")]` | 映射 POST 请求 | 创建操作 |

@@ -1,7 +1,4 @@
 pub mod api_controller;
-pub mod auth_controller;
-pub mod validation_controller;
-
+pub mod user_controller;
 pub use api_controller::ApiController;
-pub use auth_controller::AuthController;
-pub use validation_controller::ValidationController;
+pub use user_controller::UserController;

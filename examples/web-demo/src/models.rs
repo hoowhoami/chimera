@@ -1,13 +1,9 @@
-use serde::{Deserialize, Serialize};
-use validator::Validate;
-use once_cell::sync::Lazy;
 use regex::Regex;
-use chimera_web::validators; // 导入框架提供的验证器
-
-// 定义正则表达式用于验证
-static PHONE_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^1[3-9]\d{9}$").unwrap()
-});
+use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
+use validator::Validate;
+// 导入框架提供的验证器
+use chimera_web::validators::*;
 
 // ==================== 数据模型 ====================
 
@@ -19,18 +15,6 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateUserRequest {
-    pub name: String,
-    pub email: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UpdateUserRequest {
-    pub name: Option<String>,
-    pub email: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchQuery {
     pub name: Option<String>,
     pub email: Option<String>,
@@ -38,247 +22,58 @@ pub struct SearchQuery {
     pub size: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoginForm {
-    pub username: String,
-    pub password: String,
-    pub remember_me: Option<bool>,
-}
+static REGEX_PHONE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^1[3-9]\\d{9}$").unwrap());
 
-/// 带验证的登录表单 - 演示 ValidatedFormData 提取器
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct ValidatedLoginForm {
-    #[serde(default)]
-    #[validate(length(min = 3, max = 20, message = "用户名长度必须在3-20个字符之间"))]
-    pub username: String,
-
-    #[serde(default)]
-    #[validate(length(min = 6, message = "密码长度至少为6个字符"))]
-    pub password: String,
-
-    pub remember_me: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommentForm {
-    pub author: String,
-    pub content: String,
-    pub rating: Option<u32>,
-}
-
-/// 带验证的评论表单 - 演示 ValidatedFormData 提取器
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct ValidatedCommentForm {
-    #[serde(default)]
-    #[validate(length(min = 2, max = 50, message = "作者名称长度必须在2-50个字符之间"))]
-    pub author: String,
-
-    #[serde(default)]
-    #[validate(length(min = 10, max = 500, message = "评论内容长度必须在10-500个字符之间"))]
-    pub content: String,
-
-    #[serde(default)]
-    #[validate(range(min = 1, max = 5, message = "评分必须在1-5之间"))]
-    pub rating: u32,
-}
-
-/// 带验证的搜索查询参数 - 演示 ValidatedRequestParam 提取器
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct ValidatedSearchQuery {
-    #[serde(default)]
-    #[validate(length(min = 2, max = 50, message = "搜索关键词长度必须在2-50个字符之间"))]
-    pub keyword: String,
-
-    #[serde(default = "default_page")]
-    #[validate(range(min = 1, max = 1000, message = "页码必须在1-1000之间"))]
-    pub page: u32,
-
-    #[serde(default = "default_size")]
-    #[validate(range(min = 1, max = 100, message = "每页数量必须在1-100之间"))]
-    pub size: u32,
-}
-
-fn default_page() -> u32 { 1 }
-fn default_size() -> u32 { 10 }
-
-// ==================== 带验证的请求模型 ====================
-
-/// 用户注册请求 - 演示自定义消息的参数验证功能
-///
-/// 使用 `#[serde(default)]` 让字段缺失时使用默认值，然后由 validator 验证
-/// 这样更符合 Spring Boot 的行为：先完成反序列化，再验证
+/// 用户注册请求
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct RegisterUserRequest {
     /// 用户名：不能为空，长度2-20个字符
-    #[serde(default)]
-    #[validate(length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间"))]
-    pub username: String,
-
-    /// 邮箱：不能为空，必须是有效的邮箱格式
-    #[serde(default)]
-    #[validate(email(message = "请输入有效的邮箱地址"))]
-    pub email: String,
-
-    /// 密码：不能为空，最少8个字符
-    #[serde(default)]
-    #[validate(length(min = 8, message = "密码长度至少为8个字符"))]
-    pub password: String,
-
-    /// 年龄：必须在18-120之间
-    #[serde(default)]
-    #[validate(range(min = 18, max = 120, message = "年龄必须在18-120岁之间"))]
-    pub age: u32,
-
-    /// 手机号：必须匹配中国手机号格式
-    #[serde(default)]
-    #[validate(regex(path = "*PHONE_REGEX", message = "请输入有效的手机号"))]
-    pub phone: String,
-}
-
-/// 商品创建请求 - 演示更多自定义验证规则
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct CreateProductRequest {
-    /// 商品名称：不能为空
-    #[serde(default)]
-    #[validate(length(min = 1, message = "商品名称不能为空"))]
-    pub name: String,
-
-    /// 商品描述：不能为空，最少10个字符
-    #[serde(default)]
-    #[validate(length(min = 10, message = "商品描述至少需要10个字符"))]
-    pub description: String,
-
-    /// 价格：必须大于0
-    #[serde(default)]
-    #[validate(range(min = 1, message = "商品价格必须大于0"))]
-    pub price: u32,
-
-    /// 库存：必须在0-10000之间
-    #[serde(default)]
-    #[validate(range(min = 0, max = 10000, message = "库存数量必须在0-10000之间"))]
-    pub stock: u32,
-}
-
-/// 用户更新请求 - 演示所有验证器对 Option 类型的支持
-/// 使用 Option<T> 适合部分更新场景（PATCH），字段不存在时不更新
-///
-/// 所有验证器都支持 Option 类型：
-/// - None 值：跳过验证
-/// - Some(值)：正常验证该值
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UpdateUserWithPhone {
-    /// 用户名：可选，如果提供则验证长度
-    #[validate(length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间"))]
+    #[validate(
+        custom(function = "not_blank", message = "用户名不能为空"),
+        length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间")
+    )]
     pub username: Option<String>,
 
-    /// 邮箱：可选，如果提供则验证格式
-    #[validate(email(message = "请输入有效的邮箱地址"))]
+    /// 邮箱：不能为空，必须是有效的邮箱格式
+    #[validate(
+        custom(function = "not_blank", message = "邮箱不能为空"),
+        email(message = "请输入有效的邮箱地址")
+    )]
     pub email: Option<String>,
 
-    /// 手机号：可选，如果提供则验证格式（中国手机号）
-    /// 演示 Option<String> 使用 regex 验证
-    #[validate(regex(path = "*PHONE_REGEX", message = "请输入有效的手机号"))]
-    pub phone: Option<String>,
+    /// 密码：不能为空，最少8个字符
+    #[validate(
+        custom(function = "not_blank", message = "密码不能为空"),
+        length(min = 8, message = "密码长度至少为8个字符")
+    )]
+    pub password: Option<String>,
 
-    /// 年龄：可选，如果提供则验证范围
-    /// 演示 Option<u32> 使用 range 验证
-    #[validate(range(min = 18, max = 120, message = "年龄必须在18-120岁之间"))]
+    /// 年龄：必须在18-120之间
+    #[validate(
+        required(message = "年龄不能为空"),
+        range(min = 18, max = 120, message = "年龄必须在18-120岁之间")
+    )]
     pub age: Option<u32>,
 
-    /// 个人简介：可选，如果提供则不能为空
-    /// 演示 Option<String> 使用 length 验证
-    #[validate(length(min = 1, message = "个人简介不能为空字符串"))]
-    pub bio: Option<String>,
-
-    /// 昵称：可选，如果提供则不能为空白
-    /// 演示 Option<String> 使用 length 验证
-    #[validate(length(min = 1, message = "昵称不能为空白字符"))]
-    pub nickname: Option<String>,
+    /// 手机号：必须匹配中国手机号格式
+    #[validate(
+        custom(function = "not_blank", message = "手机号不能为空"),
+        regex(path = "*REGEX_PHONE", message = "请输入有效的手机号")
+    )]
+    pub phone: Option<String>,
 }
 
-// ==================== 自定义验证器演示 ====================
-
-// 定义自定义验证器的正则表达式
-static USERNAME_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^[a-zA-Z][a-zA-Z0-9_]{2,19}$").unwrap()
-});
-
-/// 自定义验证函数：验证用户名格式
-/// 用户可以在自己的项目中定义类似的验证函数
-fn validate_custom_username(username: &str) -> Result<(), validator::ValidationError> {
-    if USERNAME_PATTERN.is_match(username) {
-        Ok(())
-    } else {
-        let mut error = validator::ValidationError::new("invalid_username");
-        error.message = Some("用户名必须以字母开头，只能包含字母、数字和下划线，长度3-20个字符".into());
-        Err(error)
-    }
-}
-
-/// 自定义验证函数：验证密码强度
-/// 演示如何在项目中定义业务相关的验证规则
-fn validate_strong_password(password: &str) -> Result<(), validator::ValidationError> {
-    let has_uppercase = password.chars().any(|c| c.is_uppercase());
-    let has_lowercase = password.chars().any(|c| c.is_lowercase());
-    let has_digit = password.chars().any(|c| c.is_numeric());
-    let is_long_enough = password.len() >= 8;
-
-    if has_uppercase && has_lowercase && has_digit && is_long_enough {
-        Ok(())
-    } else {
-        let mut error = validator::ValidationError::new("weak_password");
-        error.message = Some("密码必须至少8个字符，并包含大写字母、小写字母和数字".into());
-        Err(error)
-    }
-}
-
-/// 演示使用框架内置验证器的示例
-/// 使用 chimera_web::validators::validate_not_blank
+/// 用户登陆请求
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct CreateArticleRequest {
-    /// 文章标题：使用框架内置的 not_blank 验证器
-    #[serde(default)]
-    #[validate(custom(function = "validators::not_blank"))]
-    pub title: String,
+pub struct UserLoginRequest {
+    /// 用户名：不能为空，长度2-20个字符
+    #[validate(
+        custom(function = "not_blank", message = "用户名不能为空"),
+        length(min = 2, max = 20, message = "用户名长度必须在2-20个字符之间")
+    )]
+    pub username: Option<String>,
 
-    /// 文章内容：使用框架内置的 not_blank 验证器
-    #[serde(default)]
-    #[validate(custom(function = "validators::not_blank"))]
-    pub content: String,
-
-    /// 作者名称：使用框架内置的 not_blank 验证器
-    #[serde(default)]
-    #[validate(custom(function = "validators::not_blank"))]
-    pub author: String,
-
-    /// 标签：可选，如果提供则使用 not_blank 验证
-    #[serde(default)]
-    #[validate(custom(function = "validators::not_blank"))]
-    pub tags: Option<String>,
+    /// 密码：不能为空，最少8个字符
+    #[validate(custom(function = "not_blank", message = "密码不能为空"))]
+    pub password: Option<String>,
 }
-
-/// 演示用户自定义验证器的示例
-/// 展示如何在项目中定义和使用自定义验证函数
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UserSignupRequest {
-    /// 用户名：使用项目自定义的验证函数
-    #[serde(default)]
-    #[validate(custom(function = "validate_custom_username"))]
-    pub username: String,
-
-    /// 密码：使用项目自定义的密码强度验证
-    #[serde(default)]
-    #[validate(custom(function = "validate_strong_password"))]
-    pub password: String,
-
-    /// 邮箱：使用 validator 库内置的 email 验证
-    #[serde(default)]
-    #[validate(email(message = "请输入有效的邮箱地址"))]
-    pub email: String,
-
-    /// 昵称：使用框架提供的 not_blank 验证器
-    #[serde(default)]
-    #[validate(custom(function = "validators::not_blank", message = "昵称不能为空"))]
-    pub nickname: String,
-}
-

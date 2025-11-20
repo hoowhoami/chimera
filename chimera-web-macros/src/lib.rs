@@ -2,31 +2,11 @@
 //!
 //! 提供 Web 相关的过程宏，类似 Spring MVC 的注解
 
-mod controller;
 mod exception_handler;
 mod route;
 mod utils;
 
 use proc_macro::TokenStream;
-
-/// Controller 宏
-///
-/// 将结构体标记为控制器，自动注册路由
-///
-/// # 示例
-///
-/// ```ignore
-/// #[derive(Controller)]
-/// #[route("/api/users")]
-/// struct UserController {
-///     #[autowired]
-///     service: Arc<UserService>,
-/// }
-/// ```
-#[proc_macro_derive(Controller, attributes(route))]
-pub fn derive_controller(input: TokenStream) -> TokenStream {
-    controller::derive_controller_impl(input)
-}
 
 /// ExceptionHandler 宏
 ///
@@ -54,15 +34,29 @@ pub fn derive_exception_handler(input: TokenStream) -> TokenStream {
     exception_handler::derive_exception_handler(input)
 }
 
-/// 处理控制器实现块，提取路由方法
+/// controller 宏
+///
+/// 可以用于结构体或 impl 块：
+///
+/// 1. 用于结构体时：标记为控制器并注册路由，需要提供基础路径参数
+/// 2. 用于 impl 块时：扫描路由方法并生成路由注册代码
 ///
 /// # 示例
 ///
 /// ```ignore
+/// // 用于结构体 - 提供基础路径
+/// #[controller("/user")]
+/// #[derive(Component, Clone)]
+/// struct UserController {
+///     #[autowired]
+///     service: Arc<UserService>,
+/// }
+///
+/// // 用于 impl 块 - 扫描路由方法
 /// #[controller]
 /// impl UserController {
 ///     #[get_mapping("/:id")]
-///     async fn get_user(&self, id: String) -> ResponseEntity<User> {
+///     async fn get_user(&self, PathVariable(id): PathVariable<u32>) -> impl IntoResponse {
 ///         // ...
 ///     }
 /// }

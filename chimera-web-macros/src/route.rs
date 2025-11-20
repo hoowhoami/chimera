@@ -2,17 +2,79 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemImpl, ImplItem, ImplItemFn, Attribute, FnArg, Type};
+use syn::{Attribute, FnArg, ImplItem, ImplItemFn, ItemImpl, ItemStruct, Type};
 
-/// controller_impl 宏实现
+/// controller 宏实现
 ///
-/// 处理控制器实现块，扫描路由方法并生成路由注册代码
+/// 可以用于结构体或 impl 块：
+/// - 用于结构体：提取路径并注册到全局
+/// - 用于 impl 块：扫描路由方法并生成路由注册代码
+pub fn controller_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let item_clone = item.clone();
+
+    // 尝试解析为结构体
+    if let Ok(item_struct) = syn::parse::<ItemStruct>(item_clone.clone()) {
+        return handle_controller_struct(attr, item_struct);
+    }
+
+    // 尝试解析为 impl 块
+    if let Ok(item_impl) = syn::parse::<ItemImpl>(item_clone) {
+        return handle_controller_impl(attr, item_impl);
+    }
+
+    // 都不是，返回错误
+    let error = quote! {
+        compile_error!("controller 宏只能用于 struct 或 impl 块");
+    };
+    TokenStream::from(error)
+}
+
+/// 处理结构体上的 controller 宏
 ///
-/// 支持的方法签名：
-/// 1. 无参数：`async fn handler(&self) -> impl IntoResponse`
-/// 2. 带提取器：`async fn handler(&self, PathVariable(id): PathVariable<u32>, RequestBody(data): RequestBody<User>) -> impl IntoResponse`
-pub fn controller_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as ItemImpl);
+/// 生成：
+/// - __base_path() 方法
+/// - 全局注册代码
+fn handle_controller_struct(attr: TokenStream, item: ItemStruct) -> TokenStream {
+    let name = &item.ident;
+
+    // 解析路径参数
+    let base_path = if attr.is_empty() {
+        "/".to_string()
+    } else {
+        // 解析路径字符串
+        let attr_str = attr.to_string();
+        attr_str.trim_matches('"').to_string()
+    };
+
+    let expanded = quote! {
+        #item
+
+        impl #name {
+            pub fn __base_path() -> &'static str {
+                #base_path
+            }
+        }
+
+        // 提交到全局控制器注册表
+        ::chimera_core::inventory::submit! {
+            ::chimera_web::controller::ControllerRegistration {
+                type_name: stringify!(#name),
+                base_path: #base_path,
+                register: |router| {
+                    #name::__register_routes(router)
+                },
+                get_route_list: || #name::__get_routes(),
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+/// 处理 impl 块上的 controller 宏
+///
+/// 扫描路由方法并生成路由注册代码
+fn handle_controller_impl(_attr: TokenStream, input: ItemImpl) -> TokenStream {
     let self_ty = &input.self_ty;
 
     // 收集所有路由方法
