@@ -17,6 +17,7 @@ pub mod middleware;
 pub mod plugin;
 pub mod exception_handler;
 pub mod exception_handler_registry;
+pub mod validators;
 
 // 重新导出核心类型
 pub use exception_handler_registry::{ExceptionHandlerRegistration, get_all_exception_handlers};
@@ -34,6 +35,7 @@ pub mod prelude {
     pub use crate::plugin::*;
     pub use crate::exception_handler::*;
     pub use crate::exception_handler_registry::*;
+    pub use crate::validators;
 
     pub use axum;
     pub use axum::routing::{get, post, put, delete, patch};

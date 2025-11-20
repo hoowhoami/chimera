@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use chimera_web::validators; // 导入框架提供的验证器
 
 // 定义正则表达式用于验证
 static PHONE_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -194,3 +195,90 @@ pub struct UpdateUserWithPhone {
     #[validate(length(min = 1, message = "昵称不能为空白字符"))]
     pub nickname: Option<String>,
 }
+
+// ==================== 自定义验证器演示 ====================
+
+// 定义自定义验证器的正则表达式
+static USERNAME_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^[a-zA-Z][a-zA-Z0-9_]{2,19}$").unwrap()
+});
+
+/// 自定义验证函数：验证用户名格式
+/// 用户可以在自己的项目中定义类似的验证函数
+fn validate_custom_username(username: &str) -> Result<(), validator::ValidationError> {
+    if USERNAME_PATTERN.is_match(username) {
+        Ok(())
+    } else {
+        let mut error = validator::ValidationError::new("invalid_username");
+        error.message = Some("用户名必须以字母开头，只能包含字母、数字和下划线，长度3-20个字符".into());
+        Err(error)
+    }
+}
+
+/// 自定义验证函数：验证密码强度
+/// 演示如何在项目中定义业务相关的验证规则
+fn validate_strong_password(password: &str) -> Result<(), validator::ValidationError> {
+    let has_uppercase = password.chars().any(|c| c.is_uppercase());
+    let has_lowercase = password.chars().any(|c| c.is_lowercase());
+    let has_digit = password.chars().any(|c| c.is_numeric());
+    let is_long_enough = password.len() >= 8;
+
+    if has_uppercase && has_lowercase && has_digit && is_long_enough {
+        Ok(())
+    } else {
+        let mut error = validator::ValidationError::new("weak_password");
+        error.message = Some("密码必须至少8个字符，并包含大写字母、小写字母和数字".into());
+        Err(error)
+    }
+}
+
+/// 演示使用框架内置验证器的示例
+/// 使用 chimera_web::validators::validate_not_blank
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct CreateArticleRequest {
+    /// 文章标题：使用框架内置的 not_blank 验证器
+    #[serde(default)]
+    #[validate(custom(function = "validators::not_blank"))]
+    pub title: String,
+
+    /// 文章内容：使用框架内置的 not_blank 验证器
+    #[serde(default)]
+    #[validate(custom(function = "validators::not_blank"))]
+    pub content: String,
+
+    /// 作者名称：使用框架内置的 not_blank 验证器
+    #[serde(default)]
+    #[validate(custom(function = "validators::not_blank"))]
+    pub author: String,
+
+    /// 标签：可选，如果提供则使用 not_blank 验证
+    #[serde(default)]
+    #[validate(custom(function = "validators::not_blank"))]
+    pub tags: Option<String>,
+}
+
+/// 演示用户自定义验证器的示例
+/// 展示如何在项目中定义和使用自定义验证函数
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct UserSignupRequest {
+    /// 用户名：使用项目自定义的验证函数
+    #[serde(default)]
+    #[validate(custom(function = "validate_custom_username"))]
+    pub username: String,
+
+    /// 密码：使用项目自定义的密码强度验证
+    #[serde(default)]
+    #[validate(custom(function = "validate_strong_password"))]
+    pub password: String,
+
+    /// 邮箱：使用 validator 库内置的 email 验证
+    #[serde(default)]
+    #[validate(email(message = "请输入有效的邮箱地址"))]
+    pub email: String,
+
+    /// 昵称：使用框架提供的 not_blank 验证器
+    #[serde(default)]
+    #[validate(custom(function = "validators::not_blank", message = "昵称不能为空"))]
+    pub nickname: String,
+}
+
