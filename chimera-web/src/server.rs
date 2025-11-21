@@ -124,12 +124,6 @@ impl ChimeraWebServer {
 
     /// 初始化异常处理器和拦截器
     pub async fn initialize_middleware(mut self) -> ApplicationResult<Self> {
-
-        // 初始化模板引擎（从配置中读取热重载设置）
-        if let Err(e) = crate::template::TemplateEngine::init_with_config(self.context.environment()) {
-            tracing::error!("Failed to initialize template engine: {}", e);
-        }
-
         // 初始化异常处理器注册表
         if self.config.enable_global_exception_handling {
             let exception_registry = build_exception_handler_registry(&self.context).await?;

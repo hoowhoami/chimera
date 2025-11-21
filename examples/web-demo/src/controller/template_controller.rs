@@ -3,7 +3,7 @@ use crate::service::UserService;
 use chimera_core::prelude::*;
 use chimera_core_macros::{component, Component};
 use chimera_web::prelude::*;
-use chimera_web::template::Template;
+use chimera_web::template::TemplateEngine;
 use chimera_web_macros::{controller, get_mapping};
 use std::sync::Arc;
 use serde::Serialize;
@@ -17,6 +17,9 @@ use serde::Serialize;
 pub struct TemplateController {
     #[autowired]
     user_service: Arc<UserService>,
+
+    #[autowired]
+    template_engine: Arc<TemplateEngine>,
 }
 
 /// 用户视图模型
@@ -37,7 +40,7 @@ impl TemplateController {
     /// 访问: GET /templates/home
     #[get_mapping("/home")]
     async fn home(&self) -> impl IntoResponse {
-        Template::new("index.html")
+        self.template_engine.render("index.html")
             .with("title", "Chimera Web Framework")
             .with("message", "欢迎使用 Chimera Web 框架！这是一个基于 Rust 的现代化 Web 框架。")
             .with("timestamp", chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string())
@@ -73,7 +76,7 @@ impl TemplateController {
             },
         ];
 
-        Template::new("users.html")
+        self.template_engine.render("users.html")
             .with("title", "用户列表")
             .with("users", users)
             .with("total", 3)
@@ -94,7 +97,7 @@ impl TemplateController {
             status: "active".to_string(),
         };
 
-        Template::new("user_detail.html")
+        self.template_engine.render("user_detail.html")
             .with("title", format!("用户详情 - {}", user.username))
             .with("user", user)
             .with("timestamp", chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string())
@@ -105,7 +108,7 @@ impl TemplateController {
     /// 访问: GET /templates/about
     #[get_mapping("/about")]
     async fn about(&self) -> impl IntoResponse {
-        Template::new("about.html")
+        self.template_engine.render("about.html")
             .with("title", "关于 Chimera")
             .with("version", "1.0.0")
             .with("description", "Chimera 是一个受 Spring Boot 启发的 Rust Web 框架")
@@ -126,7 +129,7 @@ impl TemplateController {
     /// 访问: GET /templates/form
     #[get_mapping("/form")]
     async fn show_form(&self) -> impl IntoResponse {
-        Template::new("form.html")
+        self.template_engine.render("form.html")
             .with("title", "用户注册表单")
             .with("action", "/user/register")
             .with("method", "POST")
@@ -138,7 +141,7 @@ impl TemplateController {
     /// 访问: GET /templates/error
     #[get_mapping("/error")]
     async fn error_page(&self) -> impl IntoResponse {
-        Template::new("error.html")
+        self.template_engine.render("error.html")
             .with("title", "页面未找到")
             .with("error_code", 404)
             .with("error_message", "您访问的页面不存在")
@@ -161,7 +164,7 @@ impl TemplateController {
             None
         };
 
-        Template::new("conditional.html")
+        self.template_engine.render("conditional.html")
             .with("title", "条件渲染示例")
             .with("logged_in", logged_in)
             .with("username", username)
@@ -213,7 +216,7 @@ impl TemplateController {
             },
         ];
 
-        Template::new("nested.html")
+        self.template_engine.render("nested.html")
             .with("title", "嵌套数据示例")
             .with("departments", departments)
             .with("timestamp", chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string())

@@ -46,6 +46,3 @@ pub const TERA_PATTERN: &str = "chimera.tera.pattern";
 
 /// 是否启用 Tera 热加载
 pub const TERA_HOT_RELOAD: &str = "chimera.tera.hot-reload";
-
-/// Tera 全局变量
-pub const TERA_GLOBALS: &str = "chimera.tera.globals";

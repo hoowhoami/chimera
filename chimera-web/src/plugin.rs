@@ -6,7 +6,7 @@ use chimera_core::prelude::*;
 use crate::server::ServerProperties;
 use crate::multipart::MultipartProperties;
 use crate::server::ChimeraWebServer;
-use crate::template::TemplateProperties;
+use crate::template::{TemplateProperties, TemplateEngine};
 use std::sync::Arc;
 
 /// Web 应用插件
@@ -57,6 +57,19 @@ impl ApplicationPlugin for WebPlugin {
                 move || Ok(TemplateProperties::from_environment(&env))
             })
             .map_err(|e| ApplicationError::Container(e))?;
+
+        // 注册 TemplateEngine Bean（如果启用）
+        match TemplateEngine::from_environment(&env) {
+            Ok(engine) => {
+                tracing::info!("Template engine initialized and registered as bean");
+                context
+                    .register_singleton("templateEngine", move || Ok(engine.clone()))
+                    .map_err(|e| ApplicationError::Container(e))?;
+            }
+            Err(e) => {
+                tracing::debug!("Template engine not initialized: {}", e);
+            }
+        }
 
         Ok(())
     }
