@@ -173,39 +173,52 @@ impl ApiController {
 
 - **Tera 模板引擎** - 功能强大的模板语法，支持变量、循环、条件、过滤器等
 - **热重载** - 开发模式下自动监听模板文件变化，无需重启服务器
+- **依赖注入集成** - TemplateEngine 作为 Bean 管理，通过 `#[autowired]` 自动注入
 - **类型安全** - 通过 `Template` 构建器提供类型安全的模板渲染
 - **配置化** - 通过配置文件控制模板目录、热重载等选项
-- **Spring Boot 风格** - 类似 Spring Boot 的 ModelAndView，使用 `Template::new()` 构建响应
+- **优雅 API** - 链式调用，自动实现 `IntoResponse`
 
 ```rust
 use chimera_web::prelude::*;
+use std::sync::Arc;
 
 #[controller("/templates")]
 #[derive(Component, Clone)]
-pub struct TemplateController {}
+pub struct TemplateController {
+    // 注入 TemplateEngine
+    #[autowired]
+    template_engine: Arc<TemplateEngine>,
+}
 
 #[component]
 #[controller]
 impl TemplateController {
     // 渲染模板并传递数据
     #[get_mapping("/home")]
-    async fn home(&self) -> Result<impl IntoResponse, TemplateError> {
-        Template::new("index.html")
+    async fn home(&self) -> impl IntoResponse {
+        self.template_engine.render("index.html")
             .with("title", "Chimera Web Framework")
             .with("message", "Welcome to Chimera!")
-            .render()
     }
 
     // 渲染列表数据
     #[get_mapping("/users")]
-    async fn users(&self) -> Result<impl IntoResponse, TemplateError> {
+    async fn users(&self) -> impl IntoResponse {
         let users = vec![
             User { id: 1, name: "Alice".to_string() },
             User { id: 2, name: "Bob".to_string() },
         ];
-        Template::new("users.html")
+        self.template_engine.render("users.html")
             .with("users", &users)
-            .render()
+    }
+
+    // 自定义状态码
+    #[get_mapping("/error")]
+    async fn error(&self) -> impl IntoResponse {
+        self.template_engine.render("error.html")
+            .with("error_code", 404)
+            .with("message", "Page not found")
+            .status(StatusCode::NOT_FOUND)
     }
 }
 ```
@@ -214,7 +227,7 @@ impl TemplateController {
 
 ```toml
 [chimera.tera]
-# 是否启用 Tera 模板引擎
+# 是否启用 Tera 模板引擎（启用后会自动注册 TemplateEngine Bean）
 enabled = true
 
 # 模板目录（相对于应用运行目录）
@@ -224,8 +237,16 @@ template-dir = "templates"
 pattern = "templates/**/*"
 
 # 是否启用热重载（开发模式建议开启，生产环境建议关闭）
+# 启用后会自动监听模板文件变化，修改后无需重启服务器
 hot-reload = true
 ```
+
+**特性说明**：
+
+- **自动注册 Bean**：启用后，`TemplateEngine` 会自动注册到依赖注入容器，可在任何 Controller 中通过 `#[autowired]` 注入
+- **热重载**：开发模式下修改模板文件后立即生效，无需重启服务器，提升开发效率
+- **线程安全**：使用 `Arc<RwLock<Tera>>` 实现，支持多线程并发访问
+- **错误处理**：模板渲染错误会自动转换为 HTTP 500 响应
 
 **模板示例**（`templates/users.html`）：
 
