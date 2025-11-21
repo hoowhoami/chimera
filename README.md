@@ -45,6 +45,9 @@ chimera-web-macros = "0.1"
 # 参数验证（Web 框架需要）
 validator = { version = "0.18", features = ["derive"] }
 
+# 模板引擎（可选，用于服务端渲染）
+tera = "1"
+
 # 异步运行时
 tokio = { version = "1", features = ["full"] }
 
@@ -131,6 +134,7 @@ impl ApiController {
   - `RequestHeaders` - 提取 HTTP 请求头（类似 @RequestHeader）
 - **文件上传** - 基于 multer 的文件上传支持，可配置文件大小限制
 - **参数验证** - 基于标准 `validator` 库的自动验证，支持自定义错误消息
+- **模板引擎** - 集成 Tera 模板引擎，支持热重载
 - **全局异常处理** - 类似 Spring Boot 的 @ControllerAdvice
 - **类型安全** - 编译时检查所有参数类型
 - **依赖注入集成** - Controller 无缝访问 DI 容器中的 Bean
@@ -162,6 +166,85 @@ impl ApiController {
 - **@init** - Bean 初始化回调，类似 Spring 的 `@PostConstruct`
 - **@destroy** - Bean 销毁回调，类似 Spring 的 `@PreDestroy`
 - **Shutdown Hooks** - 应用优雅关闭钩子
+
+### 模板引擎
+
+基于 Tera 的服务端模板渲染引擎（类似 Jinja2/Django Templates）：
+
+- **Tera 模板引擎** - 功能强大的模板语法，支持变量、循环、条件、过滤器等
+- **热重载** - 开发模式下自动监听模板文件变化，无需重启服务器
+- **类型安全** - 通过 `Template` 构建器提供类型安全的模板渲染
+- **配置化** - 通过配置文件控制模板目录、热重载等选项
+- **Spring Boot 风格** - 类似 Spring Boot 的 ModelAndView，使用 `Template::new()` 构建响应
+
+```rust
+use chimera_web::prelude::*;
+
+#[controller("/templates")]
+#[derive(Component, Clone)]
+pub struct TemplateController {}
+
+#[component]
+#[controller]
+impl TemplateController {
+    // 渲染模板并传递数据
+    #[get_mapping("/home")]
+    async fn home(&self) -> Result<impl IntoResponse, TemplateError> {
+        Template::new("index.html")
+            .with("title", "Chimera Web Framework")
+            .with("message", "Welcome to Chimera!")
+            .render()
+    }
+
+    // 渲染列表数据
+    #[get_mapping("/users")]
+    async fn users(&self) -> Result<impl IntoResponse, TemplateError> {
+        let users = vec![
+            User { id: 1, name: "Alice".to_string() },
+            User { id: 2, name: "Bob".to_string() },
+        ];
+        Template::new("users.html")
+            .with("users", &users)
+            .render()
+    }
+}
+```
+
+**配置示例**（`config/application.toml`）：
+
+```toml
+[chimera.tera]
+# 是否启用 Tera 模板引擎
+enabled = true
+
+# 模板目录（相对于应用运行目录）
+template-dir = "templates"
+
+# 模板文件匹配模式
+pattern = "templates/**/*"
+
+# 是否启用热重载（开发模式建议开启，生产环境建议关闭）
+hot-reload = true
+```
+
+**模板示例**（`templates/users.html`）：
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>用户列表</title>
+</head>
+<body>
+    <h1>用户列表</h1>
+    <ul>
+    {% for user in users %}
+        <li>{{ user.name }} (ID: {{ user.id }})</li>
+    {% endfor %}
+    </ul>
+</body>
+</html>
+```
 
 ### 事件系统
 
@@ -325,6 +408,12 @@ active = ["dev"]  # 激活的 profiles
 [chimera.web.multipart]
 max-file-size = 10485760  # 最大文件大小（字节），默认 10MB
 max-fields = 100          # 最大字段数量，默认 100
+
+[chimera.tera]
+enabled = true            # 是否启用 Tera 模板引擎
+template-dir = "templates"  # 模板目录
+pattern = "templates/**/*"  # 模板文件匹配模式
+hot-reload = true         # 是否启用热重载（开发模式建议开启）
 ```
 
 环境变量前缀为 `CHIMERA_`，例如：
@@ -352,6 +441,8 @@ max-fields = 100          # 最大字段数量，默认 100
 ## 后续规划
 
 ### Web 框架
+- [x] 模板引擎支持（Tera）
+- [x] 模板热重载
 - [ ] 添加 WebSocket 支持
 - [ ] 支持 OpenAPI/Swagger 文档自动生成
 - [ ] 支持 gRPC

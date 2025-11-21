@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+        }
+        .nav {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #007bff;
+            border-radius: 5px;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .info-box {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #e7f3ff;
+            border-left: 4px solid #007bff;
+            border-radius: 5px;
+        }
+        .version {
+            font-size: 1.2em;
+            color: #007bff;
+            font-weight: bold;
+        }
+        .description {
+            margin: 15px 0;
+            line-height: 1.6;
+            color: #666;
+        }
+        .features {
+            margin: 20px 0;
+        }
+        .feature-item {
+            padding: 10px 15px;
+            margin: 10px 0;
+            background-color: #f8f9fa;
+            border-left: 3px solid #28a745;
+            border-radius: 3px;
+        }
+        .feature-item:before {
+            content: "✓ ";
+            color: #28a745;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        <div class="nav">
+            <a href="/templates/home">首页</a>
+            <a href="/templates/users">用户列表</a>
+            <a href="/templates/about">关于</a>
+            <a href="/templates/form">表单示例</a>
+        </div>
+
+        <div class="info-box">
+            <h2>Chimera Web Framework</h2>
+            <p class="version">版本: {{ version }}</p>
+            <p class="description">{{ description }}</p>
+        </div>
+
+        <h2>核心特性</h2>
+        <div class="features">
+            {% for feature in features %}
+            <div class="feature-item">
+                {{ feature }}
+            </div>
+            {% endfor %}
+        </div>
+
+        <h2>技术栈</h2>
+        <div class="info-box">
+            <ul>
+                <li><strong>Axum</strong> - 高性能异步 Web 框架</li>
+                <li><strong>Tokio</strong> - 异步运行时</li>
+                <li><strong>Tera</strong> - 模板引擎</li>
+                <li><strong>Serde</strong> - 序列化/反序列化</li>
+                <li><strong>Validator</strong> - 数据验证</li>
+            </ul>
+        </div>
+
+        <h2>设计理念</h2>
+        <div class="description">
+            <p>Chimera 框架的设计灵感来自 Spring Boot，旨在为 Rust 开发者提供一个熟悉且强大的 Web 开发体验。</p>
+            <p>我们相信：</p>
+            <ul>
+                <li>约定优于配置 - 提供合理的默认配置，减少样板代码</li>
+                <li>开发者友好 - 清晰的 API 设计和完善的文档</li>
+                <li>类型安全 - 充分利用 Rust 的类型系统保证代码质量</li>
+                <li>高性能 - 基于 Tokio 和 Axum 构建，提供出色的性能</li>
+            </ul>
+        </div>
+
+        <div class="timestamp">
+            生成时间: {{ timestamp }}
+        </div>
+    </div>
+</body>
+</html>
+

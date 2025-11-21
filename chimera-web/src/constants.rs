@@ -32,3 +32,20 @@ pub const MULTIPART_MAX_FILE_SIZE: &str = "chimera.web.multipart.max-file-size";
 
 /// Multipart 最大字段数量
 pub const MULTIPART_MAX_FIELDS: &str = "chimera.web.multipart.max-fields";
+
+// ==================== Tera 模板引擎配置 ====================
+
+/// 是否启用 Tera 模板引擎
+pub const TERA_ENABLED: &str = "chimera.tera.enabled";
+
+/// Tera 模板目录
+pub const TERA_TEMPLATE_DIR: &str = "chimera.tera.template-dir";
+
+/// Tera 模板模式
+pub const TERA_PATTERN: &str = "chimera.tera.pattern";
+
+/// 是否启用 Tera 热加载
+pub const TERA_HOT_RELOAD: &str = "chimera.tera.hot-reload";
+
+/// Tera 全局变量
+pub const TERA_GLOBALS: &str = "chimera.tera.globals";

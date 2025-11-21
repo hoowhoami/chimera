@@ -20,9 +20,11 @@ pub mod exception_handler_registry;
 pub mod validators;
 pub mod multipart;
 pub mod constants;
+pub mod template;
 
 // 重新导出核心类型
 pub use exception_handler_registry::{ExceptionHandlerRegistration, get_all_exception_handlers};
+pub use template::{Template, TemplateEngine, TemplateProperties};
 
 // 导出 inventory，供宏使用
 pub use inventory;
@@ -39,6 +41,7 @@ pub mod prelude {
     pub use crate::exception_handler_registry::*;
     pub use crate::validators;
     pub use crate::multipart;
+    pub use crate::template::*;
 
     pub use axum;
     pub use axum::routing::{get, post, put, delete, patch};

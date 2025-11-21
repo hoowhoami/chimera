@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .nav {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #007bff;
+            border-radius: 5px;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .user-card {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .user-field {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: white;
+            border-radius: 3px;
+        }
+        .user-field label {
+            font-weight: bold;
+            color: #555;
+            display: inline-block;
+            width: 100px;
+        }
+        .user-field value {
+            color: #333;
+        }
+        .status-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            display: inline-block;
+        }
+        .status-badge.active {
+            background-color: #28a745;
+            color: white;
+        }
+        .status-badge.inactive {
+            background-color: #dc3545;
+            color: white;
+        }
+        .actions {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+        }
+        .btn {
+            padding: 10px 20px;
+            margin: 5px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        <div class="nav">
+            <a href="/templates/home">首页</a>
+            <a href="/templates/users">用户列表</a>
+            <a href="/templates/about">关于</a>
+            <a href="/templates/form">表单示例</a>
+        </div>
+
+        <div class="user-card">
+            <h2>用户信息</h2>
+            
+            <div class="user-field">
+                <label>用户ID:</label>
+                <value>{{ user.id }}</value>
+            </div>
+
+            <div class="user-field">
+                <label>用户名:</label>
+                <value>{{ user.username }}</value>
+            </div>
+
+            <div class="user-field">
+                <label>邮箱:</label>
+                <value>{{ user.email }}</value>
+            </div>
+
+            <div class="user-field">
+                <label>年龄:</label>
+                <value>{{ user.age }} 岁</value>
+            </div>
+
+            <div class="user-field">
+                <label>状态:</label>
+                <span class="status-badge {{ user.status }}">
+                    {% if user.status == "active" %}
+                        激活
+                    {% else %}
+                        未激活
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+
+        <div class="actions">
+            <h3>操作</h3>
+            <a href="/user/{{ user.id }}/edit" class="btn">编辑用户</a>
+            <a href="/user/{{ user.id }}/delete" class="btn btn-secondary">删除用户</a>
+            <a href="/templates/users" class="btn btn-secondary">返回列表</a>
+        </div>
+
+        <div class="timestamp">
+            生成时间: {{ timestamp }}
+        </div>
+    </div>
+</body>
+</html>
+

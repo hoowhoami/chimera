@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .nav {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #007bff;
+            border-radius: 5px;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .department {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .department h2 {
+            color: #007bff;
+            margin-top: 0;
+        }
+        .employee-list {
+            margin: 15px 0;
+        }
+        .employee-card {
+            margin: 10px 0;
+            padding: 15px;
+            background-color: white;
+            border-radius: 3px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .employee-card:hover {
+            box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+        }
+        .employee-name {
+            font-weight: bold;
+            color: #333;
+            font-size: 1.1em;
+        }
+        .employee-details {
+            margin-top: 5px;
+            color: #666;
+            font-size: 0.9em;
+        }
+        .status-badge {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+        .status-badge.active {
+            background-color: #28a745;
+            color: white;
+        }
+        .status-badge.inactive {
+            background-color: #dc3545;
+            color: white;
+        }
+        .employee-count {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        <div class="nav">
+            <a href="/templates/home">首页</a>
+            <a href="/templates/users">用户列表</a>
+            <a href="/templates/about">关于</a>
+            <a href="/templates/form">表单示例</a>
+        </div>
+
+        <p>此页面演示如何在模板中渲染嵌套的数据结构（部门 → 员工）。</p>
+
+        {% for department in departments %}
+        <div class="department">
+            <h2>{{ department.name }}</h2>
+            
+            <div class="employee-list">
+                {% for employee in department.employees %}
+                <div class="employee-card">
+                    <div class="employee-name">
+                        {{ employee.username }}
+                        <span class="status-badge {{ employee.status }}">
+                            {% if employee.status == "active" %}
+                                在职
+                            {% else %}
+                                离职
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="employee-details">
+                        <strong>ID:</strong> {{ employee.id }} | 
+                        <strong>邮箱:</strong> {{ employee.email }} | 
+                        <strong>年龄:</strong> {{ employee.age }} 岁
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="employee-count">
+                共 {{ department.employees | length }} 名员工
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="timestamp">
+            生成时间: {{ timestamp }}
+        </div>
+    </div>
+</body>
+</html>
+

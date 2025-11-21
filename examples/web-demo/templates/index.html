@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .nav {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #007bff;
+            border-radius: 5px;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            line-height: 1.6;
+            color: #666;
+        }
+        .feature {
+            margin: 15px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        <div class="nav">
+            <a href="/templates/home">首页</a>
+            <a href="/templates/users">用户列表</a>
+            <a href="/templates/about">关于</a>
+            <a href="/templates/form">表单示例</a>
+        </div>
+
+        <div class="content">
+            <p>{{ message }}</p>
+
+            <h2>框架特性</h2>
+            <div class="feature">
+                <h3>🚀 自动装配</h3>
+                <p>Web 服务器自动配置和启动，零配置开始开发</p>
+            </div>
+
+            <div class="feature">
+                <h3>🔧 依赖注入</h3>
+                <p>无缝集成 Chimera Core 的依赖注入系统</p>
+            </div>
+
+            <div class="feature">
+                <h3>🏷️ 注解驱动</h3>
+                <p>使用宏实现 @Controller、@RequestMapping 等注解</p>
+            </div>
+
+            <div class="feature">
+                <h3>🎨 模板引擎</h3>
+                <p>集成 Tera 模板引擎，支持动态 HTML 生成</p>
+            </div>
+        </div>
+
+        <div class="timestamp">
+            生成时间: {{ timestamp }}
+        </div>
+    </div>
+</body>
+</html>

@@ -44,6 +44,10 @@ uuid = { version = "1.0", features = ["v4"] }
 # 时间处理
 chrono = { version = "0.4", features = ["serde"] }
 
+# 模板引擎
+tera = "1.20"
+notify = "6.1"
+
 # 异步trait
 async-trait = "0.1"
 

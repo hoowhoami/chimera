@@ -8,7 +8,7 @@ use axum::{
     http::header::CONTENT_TYPE,
 };
 use bytes::Bytes;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{constants::*, exception_handler::WebError};

@@ -27,3 +27,17 @@ workers = 4
 request-timeout = 30
 enable-cors = false
 enable-request-logging = true
+
+# Tera 模板引擎配置
+[chimera.tera]
+# 是否启用 Tera 模板引擎
+enabled = true
+
+# 模板目录（相对于应用运行目录）
+template-dir = "templates"
+
+# 模板文件匹配模式（相对于应用运行目录）
+pattern = "templates/**/*"
+
+# 是否启用热重载（开发模式下建议开启，生产环境建议关闭）
+hot-reload = true

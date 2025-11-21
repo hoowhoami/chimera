@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .nav {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #007bff;
+            border-radius: 5px;
+        }
+        .nav a {
+            color: white;
+            text-decoration: none;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .status-box {
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .status-box.logged-in {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+        .status-box.logged-out {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+        .user-info {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #e7f3ff;
+            border-radius: 5px;
+        }
+        .login-prompt {
+            margin: 20px 0;
+            padding: 20px;
+            background-color: #fff3cd;
+            border-radius: 5px;
+        }
+        .btn {
+            padding: 10px 20px;
+            margin: 5px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .code-example {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-left: 3px solid #007bff;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+
+        <div class="nav">
+            <a href="/templates/home">首页</a>
+            <a href="/templates/users">用户列表</a>
+            <a href="/templates/about">关于</a>
+            <a href="/templates/form">表单示例</a>
+        </div>
+
+        <h2>登录状态演示</h2>
+        
+        {% if logged_in %}
+        <div class="status-box logged-in">
+            <h3>✓ 您已登录</h3>
+            <p>欢迎回来！</p>
+        </div>
+
+        <div class="user-info">
+            <h3>用户信息</h3>
+            <p><strong>用户名:</strong> {{ username }}</p>
+            <p>您可以访问所有功能。</p>
+            <a href="/templates/conditional?logged_in=false" class="btn">退出登录</a>
+        </div>
+        {% else %}
+        <div class="status-box logged-out">
+            <h3>✗ 您未登录</h3>
+            <p>请先登录以访问完整功能。</p>
+        </div>
+
+        <div class="login-prompt">
+            <h3>需要登录</h3>
+            <p>登录后您可以：</p>
+            <ul>
+                <li>查看个人信息</li>
+                <li>管理账户设置</li>
+                <li>访问高级功能</li>
+            </ul>
+            <a href="/templates/conditional?logged_in=true" class="btn">立即登录</a>
+        </div>
+        {% endif %}
+
+        <h2>模板代码示例</h2>
+        <div class="code-example">
+{% raw %}{% if logged_in %}
+    &lt;p&gt;欢迎, {{ username }}!&lt;/p&gt;
+{% else %}
+    &lt;p&gt;请先登录&lt;/p&gt;
+{% endif %}{% endraw %}
+        </div>
+
+        <h2>测试链接</h2>
+        <p>
+            <a href="/templates/conditional?logged_in=true" class="btn">模拟已登录状态</a>
+            <a href="/templates/conditional?logged_in=false" class="btn">模拟未登录状态</a>
+        </p>
+
+        <div class="timestamp">
+            生成时间: {{ timestamp }}
+        </div>
+    </div>
+</body>
+</html>
+
