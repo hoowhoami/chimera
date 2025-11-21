@@ -441,8 +441,6 @@ hot-reload = true         # 是否启用热重载（开发模式建议开启）
 ## 后续规划
 
 ### Web 框架
-- [x] 模板引擎支持（Tera）
-- [x] 模板热重载
 - [ ] 添加 WebSocket 支持
 - [ ] 支持 OpenAPI/Swagger 文档自动生成
 - [ ] 支持 gRPC
