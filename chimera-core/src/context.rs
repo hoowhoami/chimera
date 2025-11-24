@@ -5,7 +5,6 @@ use parking_lot::RwLock;
 
 use crate::bean_factory::{DefaultListableBeanFactory, BeanFactory, BeanFactoryExt, ListableBeanFactory, ConfigurableBeanFactory, ConfigurableListableBeanFactory};
 use crate::lifecycle::BeanPostProcessor;
-use crate::constants;
 use crate::{
     bean::{BeanDefinition, FunctionFactory},
     config::Environment,

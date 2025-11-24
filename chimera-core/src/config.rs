@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::sync::{RwLock, Arc};
+use std::sync::RwLock;
 
 /// 配置值类型
 #[derive(Debug, Clone)]
