@@ -65,6 +65,14 @@ pub trait ConfigurableBeanFactory: BeanFactory {
     /// 移除 Bean 定义
     fn remove_bean_definition(&self, name: &str) -> ContainerResult<()>;
 
+    /// 获取单个 Bean 定义
+    fn get_bean_definition(&self, name: &str) -> ContainerResult<BeanDefinition>;
+
+    /// 修改 Bean 定义
+    fn modify_bean_definition<F>(&self, name: &str, modifier: F) -> ContainerResult<()>
+    where
+        F: FnOnce(&mut BeanDefinition);
+
     /// 添加 BeanPostProcessor
     fn add_bean_post_processor(&self, processor: Arc<dyn BeanPostProcessor>);
 
@@ -485,6 +493,35 @@ impl ConfigurableBeanFactory for DefaultListableBeanFactory {
 
         // 按优先级排序（order 值越小优先级越高）
         processors.sort_by_key(|p| p.order());
+    }
+
+    fn get_bean_definition(&self, name: &str) -> ContainerResult<BeanDefinition> {
+        let definitions = self.definitions.read();
+        definitions
+            .get(name)
+            .cloned()
+            .ok_or_else(|| ContainerError::BeanNotFound(name.to_string()))
+    }
+
+    fn modify_bean_definition<F>(&self, name: &str, modifier: F) -> ContainerResult<()>
+    where
+        F: FnOnce(&mut BeanDefinition),
+    {
+        // 检查配置是否已冻结
+        if *self.configuration_frozen.read() {
+            return Err(ContainerError::Other(anyhow::anyhow!(
+                "Cannot modify bean definition: configuration is frozen"
+            )));
+        }
+
+        let mut definitions = self.definitions.write();
+        if let Some(definition) = definitions.get_mut(name) {
+            modifier(definition);
+            tracing::debug!("Bean definition '{}' modified successfully", name);
+            Ok(())
+        } else {
+            Err(ContainerError::BeanNotFound(name.to_string()))
+        }
     }
 
     fn get_bean_post_processors(&self) -> Vec<Arc<dyn BeanPostProcessor>> {
