@@ -42,19 +42,3 @@ pub fn extract_string_literal(attr: &Attribute) -> Option<String> {
         None
     }
 }
-
-/// 检查属性是否匹配指定名称
-#[allow(dead_code)]
-pub fn is_attribute(attr: &Attribute, name: &str) -> bool {
-    attr.path().is_ident(name)
-}
-
-/// 解析方法参数的注解
-#[allow(dead_code)]
-pub fn parse_param_annotations() {
-    // TODO: 实现参数注解解析
-    // - #[path_param] 或 #[path_param("name")]
-    // - #[query_param] 或 #[query_param("name")]
-    // - #[request_body]
-    // - #[header("name")]
-}

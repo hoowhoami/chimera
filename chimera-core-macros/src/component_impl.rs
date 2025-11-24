@@ -92,22 +92,13 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
 
         // 生成基础注入代码
         let base_injection = if let Some(bean_name) = bean_name {
-            // 使用集中的核心组件注入逻辑
-            generate_core_component_injection(arc_type, &field_name, &bean_name, is_optional)
+            // 使用集中的框架组件注入逻辑
+            generate_framework_component_injection(arc_type, &field_name, &bean_name, is_optional)
         } else {
-            // 检查是否为核心组件类型，即使没有指定bean名称也要特殊处理
-            if is_core_component_type_id(&inner_type) {
-                // 是核心组件，使用 CoreComponent trait 的特殊注入方式
-                // CoreComponent::get_from_context 返回 Arc<Self>，正好匹配字段类型
-                if is_optional {
-                    quote! {
-                        let #field_name = Some(<#inner_type as chimera_core::CoreComponent>::get_from_context(&context));
-                    }
-                } else {
-                    quote! {
-                        let #field_name = <#inner_type as chimera_core::CoreComponent>::get_from_context(&context);
-                    }
-                }
+            // 检查是否为框架组件类型，即使没有指定bean名称也要特殊处理
+            if is_framework_component_type(&inner_type) {
+                // 是框架组件，使用直接访问方式
+                generate_framework_component_direct_injection(&inner_type, &field_name, is_optional)
             } else {
                 // 使用类型注入
                 if is_optional {
@@ -463,11 +454,11 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
             let bean_name = get_autowired_bean_name(&field.attrs);
 
             if let Some(bean_name) = bean_name {
-                // 检查是否为核心组件类型
+                // 检查是否为框架组件类型
                 let inner_type = extract_arc_type(field_type);
 
-                if is_core_component_type_id(&inner_type) {
-                    // 核心组件不包含在依赖列表中
+                if is_framework_component_type(&inner_type) {
+                    // 框架组件不包含在依赖列表中
                     None
                 } else {
                     Some(bean_name)
@@ -476,8 +467,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                 // 使用类型注入的情况
                 let inner_type = extract_arc_type(field_type);
 
-                // 检查是否为核心组件
-                if is_core_component_type_id(&inner_type) {
+                // 检查是否为框架组件
+                if is_framework_component_type(&inner_type) {
                     None
                 } else {
                     let type_name = quote! { #inner_type }.to_string();
@@ -642,33 +633,26 @@ fn get_autowired_bean_name(attrs: &[syn::Attribute]) -> Option<String> {
     None
 }
 
-/// 生成核心组件检查和注入代码
-/// 这个版本将所有核心组件逻辑集中到一个地方，比原来的分散硬编码更优雅
-/// 当需要添加新的核心组件时，只需要在这一个函数中添加即可
-fn generate_core_component_injection(
+/// 生成框架组件检查和注入代码
+/// 这个版本将所有框架组件逻辑集中到一个地方，比原来的分散硬编码更优雅
+/// 当需要添加新的框架组件时，只需要在这一个函数中添加即可
+///
+/// 注意：不再使用 CoreComponent trait，而是直接调用 ApplicationContext 的方法
+fn generate_framework_component_injection(
     type_for_injection: &syn::Type,
     field_name: &Option<syn::Ident>,
     bean_name: &str,
     is_optional: bool,
 ) -> proc_macro2::TokenStream {
-    // 提取内部类型以检查是否为核心组件
+    // 提取内部类型以检查是否为框架组件
     let inner_type = extract_arc_type(type_for_injection);
 
-    // 检查是否为核心组件类型（编译时检查）
-    if is_core_component_type_id(&inner_type) {
-        // 是核心组件，使用 CoreComponent trait 的特殊注入方式
-        // CoreComponent::get_from_context 返回 Arc<Self>，匹配 Arc<T> 字段类型
-        if is_optional {
-            quote! {
-                let #field_name = Some(<#inner_type as chimera_core::CoreComponent>::get_from_context(&context));
-            }
-        } else {
-            quote! {
-                let #field_name = <#inner_type as chimera_core::CoreComponent>::get_from_context(&context);
-            }
-        }
+    // 检查是否为框架组件类型（编译时检查）
+    if is_framework_component_type(&inner_type) {
+        // 是框架组件，使用直接访问方式
+        generate_framework_component_direct_injection(&inner_type, &field_name, is_optional)
     } else {
-        // 不是核心组件，使用普通的 bean 查找
+        // 不是框架组件，使用普通的 bean 查找
         // context.get_bean() 返回 Arc<dyn Any>，需要 downcast 成 Arc<T>
         if is_optional {
             quote! {
@@ -698,27 +682,68 @@ fn generate_core_component_injection(
     }
 }
 
-/// 检查类型是否为核心组件
-fn is_core_component_type_id(inner_type: &syn::Type) -> bool {
+/// 生成框架组件的直接注入代码（不通过 CoreComponent trait）
+/// 直接调用 ApplicationContext 的方法获取框架组件
+fn generate_framework_component_direct_injection(
+    inner_type: &syn::Type,
+    field_name: &Option<syn::Ident>,
+    is_optional: bool,
+) -> proc_macro2::TokenStream {
     let type_tokens = quote! { #inner_type }.to_string();
 
-    // 核心组件类型列表
-    // 注意：添加新的核心组件时需要在此处同步更新
-    const CORE_COMPONENT_TYPES: &[&str] = &[
+    // 根据类型生成相应的访问代码
+    let access_code = if type_tokens.contains("ApplicationContext") {
+        quote! { std::sync::Arc::clone(&context) }
+    } else if type_tokens.contains("Environment") {
+        quote! { std::sync::Arc::clone(context.environment()) }
+    } else if type_tokens.contains("ApplicationEventPublisher") {
+        quote! { std::sync::Arc::clone(context.event_publisher()) }
+    } else if type_tokens.contains("BeanFactory") || type_tokens.contains("DefaultListableBeanFactory") {
+        quote! { std::sync::Arc::clone(context.get_bean_factory()) }
+    } else {
+        // 不应该到达这里，但为了安全起见
+        quote! { std::sync::Arc::clone(&context) }
+    };
+
+    if is_optional {
+        quote! {
+            let #field_name = Some(#access_code);
+        }
+    } else {
+        quote! {
+            let #field_name = #access_code;
+        }
+    }
+}
+
+/// 检查类型是否为框架组件
+fn is_framework_component_type(inner_type: &syn::Type) -> bool {
+    let type_tokens = quote! { #inner_type }.to_string();
+
+    // 框架组件类型列表
+    // 注意：添加新的框架组件时需要在此处同步更新
+    const FRAMEWORK_COMPONENT_TYPES: &[&str] = &[
         "ApplicationContext",
         "chimera_core :: ApplicationContext",
-        "chimera_core :: container :: ApplicationContext",
+        "chimera_core :: context :: ApplicationContext",
         "Environment",
         "chimera_core :: Environment",
         "chimera_core :: config :: Environment",
         "ApplicationEventPublisher",
         "chimera_core :: ApplicationEventPublisher",
         "chimera_core :: event :: ApplicationEventPublisher",
+        "BeanFactory",
+        "chimera_core :: BeanFactory",
+        "chimera_core :: bean_factory :: BeanFactory",
+        "DefaultListableBeanFactory",
+        "chimera_core :: DefaultListableBeanFactory",
+        "chimera_core :: bean_factory :: DefaultListableBeanFactory",
     ];
 
-    // 检查是否匹配核心组件类型
-    CORE_COMPONENT_TYPES.contains(&type_tokens.as_str())
+    // 检查是否匹配框架组件类型
+    FRAMEWORK_COMPONENT_TYPES.contains(&type_tokens.as_str())
         || type_tokens.contains("ApplicationContext")
         || type_tokens.contains("Environment")
         || type_tokens.contains("ApplicationEventPublisher")
+        || type_tokens.contains("BeanFactory")
 }

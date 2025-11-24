@@ -1,5 +1,9 @@
+pub mod custom_bean_factory_post_processor;
+pub mod lifecycle_test_processor;
 pub mod logging_bean_post_processor;
 pub mod timing_bean_post_processor;
 
+pub use custom_bean_factory_post_processor::CustomBeanFactoryPostProcessor;
+pub use lifecycle_test_processor::LifecycleTestProcessor;
 pub use logging_bean_post_processor::LoggingBeanPostProcessor;
 pub use timing_bean_post_processor::TimingBeanPostProcessor;

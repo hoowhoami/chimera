@@ -8,11 +8,11 @@
 
 pub mod app;
 pub mod bean;
-pub mod bean_post_processor;
+pub mod bean_factory;
 pub mod component;
 pub mod config;
 pub mod constants;
-pub mod container;
+pub mod context;
 pub mod error;
 pub mod event;
 pub mod lifecycle;
@@ -23,8 +23,11 @@ pub mod utils;
 
 // 重新导出常用类型
 pub use app::{ChimeraApplication, RunningApplication};
-pub use bean::{Bean, BeanDefinition, BeanFactory};
-pub use bean_post_processor::{BeanPostProcessor, BeanPostProcessorMarker};
+pub use bean::{Bean, BeanDefinition, FactoryBean};
+pub use bean_factory::{
+    BeanFactory, BeanFactoryExt, ConfigurableBeanFactory, ConfigurableListableBeanFactory,
+    DefaultListableBeanFactory, ListableBeanFactory,
+};
 pub use component::Component;
 pub use component::{ComponentRegistry, ConfigurationPropertiesRegistry, EventListenerRegistry};
 pub use config::{
@@ -32,16 +35,17 @@ pub use config::{
     TomlPropertySource,
 };
 pub use constants::*;
-pub use container::{
-    ApplicationContext, ApplicationContextBuilder, Container, CoreComponent, ShutdownHook,
-};
+pub use context::{ApplicationContext, ApplicationContextBuilder, Container, ShutdownHook};
 pub use error::{ApplicationError, ApplicationResult, ContainerError, ContainerResult};
 pub use event::{
     ApplicationEventMulticaster, ApplicationEventPublisher, ApplicationShutdownEvent,
     ApplicationStartedEvent, ErrorHandler, Event, EventListener,
     SimpleApplicationEventMulticaster, TypedEventListener, TypedEventListenerAdapter,
 };
-pub use lifecycle::Lifecycle;
+pub use lifecycle::{
+    BeanFactoryPostProcessor, BeanFactoryPostProcessorMarker, BeanPostProcessor,
+    BeanPostProcessorMarker, SmartInitializingSingleton, SmartInitializingSingletonMarker,
+};
 pub use logging::{LogFormat, LogLevel, LoggingConfig};
 pub use scope::Scope;
 
@@ -55,21 +59,27 @@ pub use plugin::{ApplicationPlugin, PluginRegistry, PluginSubmission, load_plugi
 /// Prelude 模块，包含常用的 traits 和类型
 pub mod prelude {
     pub use crate::app::{ChimeraApplication, RunningApplication};
-    pub use crate::bean::{Bean, BeanDefinition, BeanFactory};
-    pub use crate::bean_post_processor::BeanPostProcessor;
+    pub use crate::bean::{Bean, BeanDefinition, FactoryBean};
+    pub use crate::bean_factory::{
+        BeanFactory, BeanFactoryExt, ConfigurableBeanFactory, ConfigurableListableBeanFactory,
+        DefaultListableBeanFactory, ListableBeanFactory,
+    };
     pub use crate::component::Component;
     pub use crate::config::{
         self, ConfigValue, Environment, EnvironmentPropertySource, MapPropertySource,
         PropertySource, TomlPropertySource,
     };
-    pub use crate::container::{ApplicationContext, Container};
+    pub use crate::context::{ApplicationContext, Container};
     pub use crate::error::{ApplicationError, ApplicationResult, ContainerError, ContainerResult};
     pub use crate::event::{
         ApplicationEventMulticaster, ApplicationEventPublisher, ApplicationShutdownEvent,
         ApplicationStartedEvent, Event, EventListener, SimpleApplicationEventMulticaster,
         TypedEventListener, TypedEventListenerAdapter,
     };
-    pub use crate::lifecycle::Lifecycle;
+    pub use crate::lifecycle::{
+        BeanFactoryPostProcessor, BeanPostProcessor, SmartInitializingSingleton,
+        SmartInitializingSingletonMarker,
+    };
     pub use crate::logging::{LogFormat, LogLevel, LoggingConfig};
     pub use crate::plugin::{ApplicationPlugin, PluginRegistry, load_plugins};
     pub use crate::scope::Scope;

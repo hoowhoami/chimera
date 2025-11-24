@@ -206,16 +206,7 @@ impl Default for Environment {
     }
 }
 
-/// Environment 实现 CoreComponent
-impl crate::container::CoreComponent for Environment {
-    fn core_bean_name() -> &'static str {
-        crate::constants::ENVIRONMENT_BEAN_NAME
-    }
 
-    fn get_from_context(context: &Arc<crate::container::ApplicationContext>) -> Arc<Self> {
-        Arc::clone(context.environment())
-    }
-}
 
 // ========== Property Sources ==========
 

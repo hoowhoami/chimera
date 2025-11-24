@@ -264,6 +264,14 @@ impl ChimeraApplication {
         tracing::info!("Scanning for @Component annotated beans");
         context.scan_components()?;
 
+        // 自动扫描并注册 BeanFactoryPostProcessor（在 Bean 实例化之前）
+        tracing::info!("Scanning for @BeanFactoryPostProcessor annotated processors");
+        context.scan_bean_factory_post_processors();
+
+        // 调用所有 BeanFactoryPostProcessor（在 Bean 定义加载后、Bean 实例化之前）
+        tracing::info!("Invoking BeanFactoryPostProcessors");
+        context.invoke_bean_factory_post_processors()?;
+
         // 自动扫描并注册 BeanPostProcessor
         tracing::info!("Scanning for @BeanPostProcessor annotated processors");
         context.scan_bean_post_processors();
@@ -365,7 +373,7 @@ impl ChimeraApplication {
     /// 后加载的配置会覆盖先加载的配置
     fn load_configurations(
         &self,
-        builder: &mut crate::container::ApplicationContextBuilder,
+        builder: &mut crate::context::ApplicationContextBuilder,
         active_profiles: &[String],
     ) -> ApplicationResult<()> {
         // 确定要使用的配置文件列表
@@ -435,7 +443,7 @@ impl ChimeraApplication {
     /// 尝试加载配置文件
     fn try_load_config_file(
         &self,
-        builder: &mut crate::container::ApplicationContextBuilder,
+        builder: &mut crate::context::ApplicationContextBuilder,
         config_file: &str,
         priority: i32,
     ) -> ApplicationResult<()> {

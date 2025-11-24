@@ -13,8 +13,10 @@ pub trait Bean: Any + Send + Sync {
 /// 为所有满足条件的类型自动实现 Bean trait
 impl<T: Any + Send + Sync> Bean for T {}
 
-/// Bean 工厂 trait - 用于创建 Bean 实例（同步版本）
-pub trait BeanFactory: Send + Sync {
+/// FactoryBean - 用于创建单个 Bean 实例的工厂
+///
+/// 类似 Spring 的 FactoryBean，负责创建具体的 Bean 实例
+pub trait FactoryBean: Send + Sync {
     /// 创建 Bean 实例（同步方法）
     fn create(&self) -> ContainerResult<Box<dyn Any + Send + Sync>>;
 
@@ -37,8 +39,8 @@ pub struct BeanDefinition {
     /// Bean 的作用域
     pub scope: Scope,
 
-    /// Bean 工厂
-    pub factory: Box<dyn BeanFactory>,
+    /// FactoryBean - 用于创建 Bean 实例
+    pub factory: Box<dyn FactoryBean>,
 
     /// 是否延迟初始化（仅对单例有效）
     pub lazy: bool,
@@ -46,10 +48,10 @@ pub struct BeanDefinition {
     /// Bean 的依赖列表（用于静态依赖分析）
     pub dependencies: Vec<String>,
 
-    /// 初始化回调（@PostConstruct）
+    /// 初始化回调（@PostConstruct / InitializingBean）
     pub init_callback: Option<InitCallback>,
 
-    /// 销毁回调（@PreDestroy）
+    /// 销毁回调（@PreDestroy / DisposableBean）
     pub destroy_callback: Option<DestroyCallback>,
 }
 
@@ -57,7 +59,7 @@ impl BeanDefinition {
     /// 创建新的 Bean 定义
     pub fn new<F>(name: impl Into<String>, factory: F) -> Self
     where
-        F: BeanFactory + 'static,
+        F: FactoryBean + 'static,
     {
         Self {
             name: name.into(),
@@ -142,7 +144,7 @@ where
     }
 }
 
-impl<T, F> BeanFactory for FunctionFactory<T, F>
+impl<T, F> FactoryBean for FunctionFactory<T, F>
 where
     T: Any + Send + Sync + 'static,
     F: Fn() -> ContainerResult<T> + Send + Sync,

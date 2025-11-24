@@ -440,15 +440,4 @@ impl ApplicationEventPublisher {
     }
 }
 
-/// ApplicationEventPublisher 实现 CoreComponent
-impl crate::container::CoreComponent for ApplicationEventPublisher {
-    fn core_bean_name() -> &'static str {
-        crate::constants::EVENT_PUBLISHER_BEAN_NAME
-    }
 
-    fn get_from_context(
-        context: &std::sync::Arc<crate::container::ApplicationContext>,
-    ) -> std::sync::Arc<Self> {
-        std::sync::Arc::clone(context.event_publisher())
-    }
-}

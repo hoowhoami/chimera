@@ -5,6 +5,8 @@ mod component_impl;
 mod component_attr;
 mod bean_impl;
 mod bean_post_processor_impl;
+mod bean_factory_post_processor_impl;
+mod smart_initializing_singleton_impl;
 
 use proc_macro::TokenStream;
 use proc_macro_error::proc_macro_error;
@@ -60,6 +62,36 @@ pub fn derive_configuration_properties(input: TokenStream) -> TokenStream {
     config_properties_impl::derive_configuration_properties_impl(input)
 }
 
+/// BeanFactoryPostProcessor 派生宏
+///
+/// 用于自动注册 BeanFactoryPostProcessor 到框架
+///
+/// 注意：必须同时使用 #[derive(Component)] 才能让 BeanFactoryPostProcessor 支持依赖注入
+///
+/// 用法：
+/// ```ignore
+/// use chimera_core::prelude::*;
+/// use chimera_core_macros::{BeanFactoryPostProcessor, Component};
+///
+/// #[derive(BeanFactoryPostProcessor, Component)]
+/// pub struct CustomBeanFactoryPostProcessor;
+///
+/// impl BeanFactoryPostProcessor for CustomBeanFactoryPostProcessor {
+///     fn post_process_bean_factory(&self, context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+///         tracing::info!("Processing bean factory");
+///         Ok(())
+///     }
+///
+///     fn order(&self) -> i32 {
+///         100  // 可选：重写 order 方法指定优先级，数字越小优先级越高
+///     }
+/// }
+/// ```
+#[proc_macro_derive(BeanFactoryPostProcessor)]
+pub fn derive_bean_factory_post_processor(input: TokenStream) -> TokenStream {
+    bean_factory_post_processor_impl::derive_bean_factory_post_processor_impl(input)
+}
+
 /// BeanPostProcessor派生宏
 ///
 /// 用于自动注册 BeanPostProcessor 到框架
@@ -95,6 +127,33 @@ pub fn derive_configuration_properties(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(BeanPostProcessor)]
 pub fn derive_bean_post_processor(input: TokenStream) -> TokenStream {
     bean_post_processor_impl::derive_bean_post_processor_impl(input)
+}
+
+/// SmartInitializingSingleton 派生宏
+///
+/// 自动注册实现了 SmartInitializingSingleton trait 的 Bean
+///
+/// 用法：
+/// ```ignore
+/// use chimera_core::prelude::*;
+/// use chimera_core_macros::{SmartInitializingSingleton, Component};
+///
+/// #[derive(SmartInitializingSingleton, Component)]
+/// pub struct StartupService {
+///     #[autowired]
+///     app_context: Arc<ApplicationContext>,
+/// }
+///
+/// impl SmartInitializingSingleton for StartupService {
+///     fn after_singletons_instantiated(&self) -> ContainerResult<()> {
+///         tracing::info!("All singletons initialized!");
+///         Ok(())
+///     }
+/// }
+/// ```
+#[proc_macro_derive(SmartInitializingSingleton)]
+pub fn derive_smart_initializing_singleton(input: TokenStream) -> TokenStream {
+    smart_initializing_singleton_impl::derive_smart_initializing_singleton_impl(input)
 }
 
 /// Component 属性宏

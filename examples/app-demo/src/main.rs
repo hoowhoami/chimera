@@ -77,6 +77,9 @@ struct SystemService {
     #[autowired]
     event_publisher: Arc<ApplicationEventPublisher>,
 
+    #[autowired]
+    bean_factory: Arc<DefaultListableBeanFactory>,
+
     test: String,
 }
 
@@ -105,6 +108,10 @@ impl SystemService {
         ));
         self.event_publisher.publish_event(custom_event);
         println!("  Published event using injected EventPublisher");
+
+        // 使用注入的 BeanFactory
+        let definitions = self.bean_factory.get_bean_definitions();
+        println!("  Total bean definitions from injected BeanFactory: {}", definitions.len());
 
         println!("  ALL core components (ApplicationContext, Environment, EventPublisher) successfully injected!");
 
