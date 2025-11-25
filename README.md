@@ -24,9 +24,6 @@ cargo run -p web-demo
 # 运行综合示例 - 展示依赖注入核心特性
 cargo run -p app-demo
 
-# 运行生命周期示例 - 展示 init/destroy 回调
-cargo run --package chimera-core --example lifecycle_demo
-
 # 测试环境变量覆盖
 CHIMERA_PROFILES_ACTIVE=prod cargo run -p app-demo
 ```

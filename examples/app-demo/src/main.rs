@@ -530,7 +530,6 @@ async fn main() -> ApplicationResult<()> {
     println!("  • @init & @destroy - Lifecycle management");
     println!("  • @lazy - Lazy initialization");
     println!("  • Event system - Typed & untyped listeners");
-    println!("  • Core components injection - ApplicationContext, Environment, EventPublisher via @autowired");
     println!("  • Dynamic bean retrieval - Get beans by name and type at runtime");
     println!("  • Shutdown hooks - Graceful shutdown");
 
