@@ -17,7 +17,7 @@ mod handlers {
 // ==================== 主程序 ====================
 
 #[tokio::main]
-async fn main() -> ApplicationResult<()> {
+async fn main() -> Result<()> {
     // 配置文件会自动从以下位置查找（按优先级）：
     // 1. config/application.toml
     // 2. application.toml

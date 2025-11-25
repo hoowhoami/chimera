@@ -74,11 +74,11 @@ pub(crate) fn configuration_impl(attr: TokenStream, item: TokenStream) -> TokenS
         let init_callback_code = if let Some(ref init_method_name) = init_method {
             let init_ident = syn::Ident::new(init_method_name, proc_macro2::Span::call_site());
             quote! {
-                let definition = definition.with_init(|bean: &mut dyn std::any::Any| -> chimera_core::ContainerResult<()> {
+                let definition = definition.with_init(|bean: &mut dyn std::any::Any| -> chimera_core::Result<()> {
                     if let Some(instance) = bean.downcast_mut::<#return_type>() {
-                        // 使用 IntoContainerResult trait 支持返回 () 或 ContainerResult<()>
-                        use chimera_core::IntoContainerResult;
-                        instance.#init_ident().into_container_result()?;
+                        // 使用 IntoResult trait 支持返回 () 或 Result<()>
+                        use chimera_core::IntoResult;
+                        instance.#init_ident().into_result()?;
                     }
                     Ok(())
                 });
@@ -91,11 +91,11 @@ pub(crate) fn configuration_impl(attr: TokenStream, item: TokenStream) -> TokenS
         let destroy_callback_code = if let Some(ref destroy_method_name) = destroy_method {
             let destroy_ident = syn::Ident::new(destroy_method_name, proc_macro2::Span::call_site());
             quote! {
-                let definition = definition.with_destroy(|bean: &mut dyn std::any::Any| -> chimera_core::ContainerResult<()> {
+                let definition = definition.with_destroy(|bean: &mut dyn std::any::Any| -> chimera_core::Result<()> {
                     if let Some(instance) = bean.downcast_mut::<#return_type>() {
-                        // 使用 IntoContainerResult trait 支持返回 () 或 ContainerResult<()>
-                        use chimera_core::IntoContainerResult;
-                        instance.#destroy_ident().into_container_result()?;
+                        // 使用 IntoResult trait 支持返回 () 或 Result<()>
+                        use chimera_core::IntoResult;
+                        instance.#destroy_ident().into_result()?;
                     }
                     Ok(())
                 });
@@ -123,19 +123,19 @@ pub(crate) fn configuration_impl(attr: TokenStream, item: TokenStream) -> TokenS
             fn #register_fn_name(
                 context: &std::sync::Arc<chimera_core::ApplicationContext>,
                 config_instance: std::sync::Arc<dyn std::any::Any + Send + Sync>,
-            ) -> chimera_core::ContainerResult<()> {
+            ) -> chimera_core::Result<()> {
                 use chimera_core::Container;
 
                 let ctx = std::sync::Arc::clone(context);
                 let config = config_instance.clone();
 
                 // Factory 闭包直接返回具体类型，让 FunctionFactory 推断正确的 TypeId
-                let factory = move || -> chimera_core::ContainerResult<#return_type> {
+                let factory = move || -> chimera_core::Result<#return_type> {
                     let config_ref = config.clone()
                         .downcast::<#self_ty>()
                         .map_err(|_e: std::sync::Arc<dyn std::any::Any + Send + Sync>| {
-                            chimera_core::ContainerError::BeanCreationFailed(
-                                format!("Failed to downcast config instance for bean '{}'", #bean_name)
+                            anyhow::anyhow!(
+                                "Failed to downcast config instance for bean '{}'", #bean_name
                             )
                         })?;
 
@@ -251,7 +251,7 @@ fn extract_destroy(attrs: &[Attribute]) -> Option<String> {
 fn extract_result_type(ty: &Type) -> Option<&Type> {
     if let Type::Path(type_path) = ty {
         if let Some(segment) = type_path.path.segments.last() {
-            if segment.ident == "Result" || segment.ident == "ContainerResult" {
+            if segment.ident == "Result" || segment.ident == "Result" {
                 if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                     if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
                         return Some(inner_ty);

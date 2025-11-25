@@ -40,7 +40,7 @@ pub fn get_all_exception_handlers() -> Vec<&'static ExceptionHandlerRegistration
 /// 构建异常处理器注册表 - 使用编译时收集的处理器
 pub async fn build_exception_handler_registry_from_inventory(
     context: &Arc<ApplicationContext>,
-) -> chimera_core::ApplicationResult<GlobalExceptionHandlerRegistry> {
+) -> chimera_core::Result<GlobalExceptionHandlerRegistry> {
     let mut registry = GlobalExceptionHandlerRegistry::new();
 
     tracing::info!("Discovering exception handlers from inventory...");
@@ -64,10 +64,10 @@ pub async fn build_exception_handler_registry_from_inventory(
                             "Failed to cast bean '{}' to GlobalExceptionHandler",
                             handler_info.bean_name
                         );
-                        return Err(chimera_core::ApplicationError::Other(format!(
+                        return Err(anyhow::anyhow!(
                             "Failed to cast bean '{}' to GlobalExceptionHandler",
                             handler_info.bean_name
-                        )));
+                        ));
                     }
                 }
             }
@@ -77,10 +77,10 @@ pub async fn build_exception_handler_registry_from_inventory(
                     handler_info.bean_name,
                     e
                 );
-                return Err(chimera_core::ApplicationError::Other(format!(
+                return Err(anyhow::anyhow!(
                     "Failed to get exception handler bean '{}': {}",
                     handler_info.bean_name, e
-                )));
+                ));
             }
         }
     }

@@ -166,8 +166,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                     s.split(',')
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
-                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                            format!("Failed to parse number in config '{}': {}", #config_key, e)
+                                        .map(|s| s.parse().map_err(|e| anyhow::anyhow!(
+                                            "Failed to parse number in config '{}': {}", #config_key, e
                                         )))
                                         .collect::<Result<#field_type, _>>()?
                                 }
@@ -177,8 +177,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                         .split(',')
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
-                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                            format!("Failed to parse number in default value: {}", e)
+                                        .map(|s| s.parse().map_err(|e| anyhow::anyhow!(
+                                            "Failed to parse number in default value: {}", e
                                         )))
                                         .collect::<Result<#field_type, _>>()?
                                 }
@@ -200,8 +200,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                     s.split(',')
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
-                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                            format!("Failed to parse float in config '{}': {}", #config_key, e)
+                                        .map(|s| s.parse().map_err(|e| anyhow::anyhow!(
+                                            "Failed to parse float in config '{}': {}", #config_key, e
                                         )))
                                         .collect::<Result<#field_type, _>>()?
                                 }
@@ -211,8 +211,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                         .split(',')
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
-                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                            format!("Failed to parse float in default value: {}", e)
+                                        .map(|s| s.parse().map_err(|e| anyhow::anyhow!(
+                                            "Failed to parse float in default value: {}", e
                                         )))
                                         .collect::<Result<#field_type, _>>()?
                                 }
@@ -226,8 +226,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                     s.split(',')
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
-                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                            format!("Failed to parse element in config '{}': {}", #config_key, e)
+                                        .map(|s| s.parse().map_err(|e| anyhow::anyhow!(
+                                            "Failed to parse element in config '{}': {}", #config_key, e
                                         )))
                                         .collect::<Result<#field_type, _>>()?
                                 }
@@ -237,8 +237,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                         .split(',')
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
-                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                            format!("Failed to parse element in default value: {}", e)
+                                        .map(|s| s.parse().map_err(|e| anyhow::anyhow!(
+                                            "Failed to parse element in default value: {}", e
                                         )))
                                         .collect::<Result<#field_type, _>>()?
                                 }
@@ -279,8 +279,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                             .get_string(#config_key)
                             .unwrap_or_else(|| #default.to_string())
                             .parse()
-                            .map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                format!("Failed to parse config '{}': {}", #config_key, e)
+                            .map_err(|e| anyhow::anyhow!(
+                                "Failed to parse config '{}': {}", #config_key, e
                             ))?;
                     }
                 }
@@ -293,8 +293,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                         quote! {
                             let #field_name = context.get_environment()
                                 .get_string_array(#config_key)
-                                .ok_or_else(|| chimera_core::ContainerError::BeanCreationFailed(
-                                    format!("Required config '{}' not found", #config_key)
+                                .ok_or_else(|| anyhow::anyhow!(
+                                    "Required config '{}' not found", #config_key
                                 ))?;
                         }
                     } else if type_str.contains("i32") || type_str.contains("i64")
@@ -312,14 +312,14 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                     s.split(',')
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
-                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                            format!("Failed to parse number in config '{}': {}", #config_key, e)
+                                        .map(|s| s.parse().map_err(|e| anyhow::anyhow!(
+                                            "Failed to parse number in config '{}': {}", #config_key, e
                                         )))
                                         .collect::<Result<#field_type, _>>()?
                                 }
                                 _ => {
-                                    return Err(chimera_core::ContainerError::BeanCreationFailed(
-                                        format!("Required config '{}' not found", #config_key)
+                                    return Err(anyhow::anyhow!(
+                                        "Required config '{}' not found", #config_key
                                     ));
                                 }
                             };
@@ -338,14 +338,14 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                     s.split(',')
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
-                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                            format!("Failed to parse float in config '{}': {}", #config_key, e)
+                                        .map(|s| s.parse().map_err(|e| anyhow::anyhow!(
+                                            "Failed to parse float in config '{}': {}", #config_key, e
                                         )))
                                         .collect::<Result<#field_type, _>>()?
                                 }
                                 _ => {
-                                    return Err(chimera_core::ContainerError::BeanCreationFailed(
-                                        format!("Required config '{}' not found", #config_key)
+                                    return Err(anyhow::anyhow!(
+                                        "Required config '{}' not found", #config_key
                                     ));
                                 }
                             };
@@ -358,14 +358,14 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                     s.split(',')
                                         .map(|s| s.trim())
                                         .filter(|s| !s.is_empty())
-                                        .map(|s| s.parse().map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                            format!("Failed to parse element in config '{}': {}", #config_key, e)
+                                        .map(|s| s.parse().map_err(|e| anyhow::anyhow!(
+                                            "Failed to parse element in config '{}': {}", #config_key, e
                                         )))
                                         .collect::<Result<#field_type, _>>()?
                                 }
                                 _ => {
-                                    return Err(chimera_core::ContainerError::BeanCreationFailed(
-                                        format!("Required config '{}' not found", #config_key)
+                                    return Err(anyhow::anyhow!(
+                                        "Required config '{}' not found", #config_key
                                     ));
                                 }
                             };
@@ -387,16 +387,16 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                     quote! {
                         let #field_name = context.get_environment()
                             .get_i64(#config_key)
-                            .ok_or_else(|| chimera_core::ContainerError::Custom(
-                                format!("Required config '{}' not found", #config_key)
+                            .ok_or_else(|| anyhow::anyhow!(
+                                "Required config '{}' not found", #config_key
                             ))? as #field_type;
                     }
                 } else if type_str.contains("f64") || type_str.contains("f32") {
                     quote! {
                         let #field_name = context.get_environment()
                             .get_f64(#config_key)
-                            .ok_or_else(|| chimera_core::ContainerError::Custom(
-                                format!("Required config '{}' not found", #config_key)
+                            .ok_or_else(|| anyhow::anyhow!(
+                                "Required config '{}' not found", #config_key
                             ))? as #field_type;
                     }
                 } else if type_str.contains("bool") {
@@ -415,8 +415,8 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
                                 format!("Required config '{}' not found", #config_key)
                             ))?
                             .parse()
-                            .map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                                format!("Failed to parse config '{}': {}", #config_key, e)
+                            .map_err(|e| anyhow::anyhow!(
+                                "Failed to parse config '{}': {}", #config_key, e
                             ))?;
                     }
                 }
@@ -483,7 +483,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
     let init_callback_impl = if let Some(method_name) = &init_method {
         let method_ident = syn::Ident::new(method_name, proc_macro2::Span::call_site());
         quote! {
-            fn init_callback() -> Option<fn(&mut Self) -> chimera_core::ContainerResult<()>> {
+            fn init_callback() -> Option<fn(&mut Self) -> chimera_core::Result<()>> {
                 Some(Self::#method_ident)
             }
         }
@@ -494,7 +494,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
     let destroy_callback_impl = if let Some(method_name) = &destroy_method {
         let method_ident = syn::Ident::new(method_name, proc_macro2::Span::call_site());
         quote! {
-            fn destroy_callback() -> Option<fn(&mut Self) -> chimera_core::ContainerResult<()>> {
+            fn destroy_callback() -> Option<fn(&mut Self) -> chimera_core::Result<()>> {
                 Some(Self::#method_ident)
             }
         }
@@ -542,7 +542,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
 
             #destroy_callback_impl
 
-            fn create_from_context(context: &std::sync::Arc<chimera_core::ApplicationContext>) -> chimera_core::ContainerResult<Self> {
+            fn create_from_context(context: &std::sync::Arc<chimera_core::ApplicationContext>) -> chimera_core::Result<Self> {
                 use std::sync::Arc;
 
                 #(#autowired_injections)*
@@ -672,10 +672,10 @@ fn generate_framework_component_injection(
                 let #field_name = {
                     let bean_any = context.get_bean(#bean_name)?;
                     bean_any.downcast::<#inner_type>()
-                        .map_err(|_| chimera_core::ContainerError::TypeMismatch {
-                            expected: std::any::type_name::<#inner_type>().to_string(),
-                            found: "unknown".to_string(),
-                        })?
+                        .map_err(|_| anyhow::anyhow!(
+                            "Type mismatch: expected {}, found unknown",
+                            std::any::type_name::<#inner_type>()
+                        ))?
                 };
             }
         }

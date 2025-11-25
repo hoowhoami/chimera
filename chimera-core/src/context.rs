@@ -2,30 +2,31 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
+use anyhow::{Context, anyhow};
 
 use crate::bean_factory::{DefaultListableBeanFactory, BeanFactory, BeanFactoryExt, ListableBeanFactory, ConfigurableBeanFactory, ConfigurableListableBeanFactory};
 use crate::lifecycle::BeanPostProcessor;
 use crate::{
     bean::{BeanDefinition, FunctionFactory},
     config::Environment,
-    error::{ContainerError, ContainerResult},
+    Result,
     event::{ApplicationEventPublisher, ApplicationShutdownEvent, Event, EventListener},
     Scope,
 };
 
 /// Shutdown hook类型
-pub type ShutdownHook = Box<dyn Fn() -> ContainerResult<()> + Send + Sync>;
+pub type ShutdownHook = Box<dyn Fn() -> Result<()> + Send + Sync>;
 
 /// 容器 trait - 定义依赖注入容器的核心接口
 pub trait Container: Send + Sync {
     /// 注册 Bean 定义
-    fn register(&self, definition: BeanDefinition) -> ContainerResult<()>;
+    fn register(&self, definition: BeanDefinition) -> Result<()>;
 
     /// 通过名称获取 Bean
-    fn get_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>>;
+    fn get_bean(&self, name: &str) -> Result<Arc<dyn Any + Send + Sync>>;
 
     /// 通过类型获取 Bean
-    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>>;
+    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> Result<Arc<T>>;
 
     /// 检查是否包含指定名称的 Bean
     fn contains_bean(&self, name: &str) -> bool;
@@ -148,7 +149,7 @@ impl ApplicationContext {
     /// Shutdown hook 会在应用关闭时按注册顺序执行
     pub fn register_shutdown_hook<F>(&self, hook: F)
     where
-        F: Fn() -> ContainerResult<()> + Send + Sync + 'static,
+        F: Fn() -> Result<()> + Send + Sync + 'static,
     {
         let mut hooks = self.shutdown_hooks.write();
         hooks.push(Box::new(hook));
@@ -276,7 +277,7 @@ impl ApplicationContext {
     ///
     /// 在 Bean 定义加载后、Bean 实例化之前调用
     /// 按照 Spring 语义，这应该在组件扫描之后、Bean 初始化之前执行
-    pub fn invoke_bean_factory_post_processors(self: &Arc<Self>) -> ContainerResult<()> {
+    pub fn invoke_bean_factory_post_processors(self: &Arc<Self>) -> Result<()> {
         let processors = self.bean_factory_post_processors.read();
 
         if processors.is_empty() {
@@ -287,12 +288,8 @@ impl ApplicationContext {
         tracing::info!("Invoking {} BeanFactoryPostProcessor(s)", processors.len());
 
         for processor in processors.iter() {
-            processor.post_process_bean_factory(self).map_err(|e| {
-                ContainerError::BeanCreationFailed(format!(
-                    "BeanFactoryPostProcessor failed: {}",
-                    e
-                ))
-            })?;
+            processor.post_process_bean_factory(self)
+                .context("BeanFactoryPostProcessor failed")?;
         }
 
         tracing::info!("All BeanFactoryPostProcessors invoked successfully");
@@ -310,10 +307,10 @@ impl ApplicationContext {
         &self,
         name: impl Into<String>,
         factory: F,
-    ) -> ContainerResult<()>
+    ) -> Result<()>
     where
         T: Any + Send + Sync,
-        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
+        F: Fn() -> Result<T> + Send + Sync + 'static,
     {
         let name = name.into();
         let definition = BeanDefinition::new(name.clone(), FunctionFactory::new(factory));
@@ -325,10 +322,10 @@ impl ApplicationContext {
         &self,
         name: impl Into<String>,
         factory: F,
-    ) -> ContainerResult<()>
+    ) -> Result<()>
     where
         T: Any + Send + Sync,
-        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
+        F: Fn() -> Result<T> + Send + Sync + 'static,
     {
         let name = name.into();
         let definition = BeanDefinition::new(name.clone(), FunctionFactory::new(factory))
@@ -341,10 +338,10 @@ impl ApplicationContext {
         &self,
         name: impl Into<String>,
         factory: F,
-    ) -> ContainerResult<()>
+    ) -> Result<()>
     where
         T: Any + Send + Sync,
-        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
+        F: Fn() -> Result<T> + Send + Sync + 'static,
     {
         let name = name.into();
         let definition = BeanDefinition::new(name.clone(), FunctionFactory::new(factory))
@@ -353,7 +350,7 @@ impl ApplicationContext {
     }
 
     /// 初始化所有非延迟加载的单例 Bean
-    pub fn initialize(self: &Arc<Self>) -> ContainerResult<()> {
+    pub fn initialize(self: &Arc<Self>) -> Result<()> {
 
         // 委托给 BeanFactory 进行预实例化
         use crate::bean_factory::ConfigurableListableBeanFactory;
@@ -371,7 +368,7 @@ impl ApplicationContext {
     /// 在所有非延迟加载的单例 Bean 初始化完成后调用
     ///
     /// 通过 inventory 机制自动收集所有使用 #[derive(SmartInitializingSingleton)] 标记的 Bean
-    fn invoke_smart_initializing_singletons(self: &Arc<Self>) -> ContainerResult<()> {
+    fn invoke_smart_initializing_singletons(self: &Arc<Self>) -> Result<()> {
         use crate::lifecycle::SmartInitializingSingletonMarker;
 
         let markers: Vec<_> = inventory::iter::<SmartInitializingSingletonMarker>().collect();
@@ -440,7 +437,7 @@ impl ApplicationContext {
     /// - 循环依赖（A -> B -> C -> A）
     ///
     /// 建议在 `scan_components()` 或 `initialize()` 之后调用此方法
-    pub fn validate_dependencies(&self) -> ContainerResult<()> {
+    pub fn validate_dependencies(&self) -> Result<()> {
         use crate::utils::dependency::validate_dependency_graph;
 
         // 从 BeanFactory 获取依赖图
@@ -448,7 +445,7 @@ impl ApplicationContext {
 
         // 验证依赖图
         validate_dependency_graph(&dependency_map)
-            .map_err(|e| ContainerError::DependencyValidationFailed(e.to_string()))?;
+            .map_err(|e| anyhow!("Dependency validation failed: {}", e))?;
 
         tracing::info!(
             "Dependency validation passed for {} bean(s)",
@@ -461,7 +458,7 @@ impl ApplicationContext {
 
     /// 销毁所有单例 Bean（调用 destroy 回调）
     /// 注意：只有当 Arc 的引用计数为 1 时才能调用 destroy
-    pub fn shutdown(&self) -> ContainerResult<()> {
+    pub fn shutdown(&self) -> Result<()> {
         tracing::info!("Starting application shutdown");
 
         // 1. 发布 ApplicationShutdownEvent
@@ -498,17 +495,17 @@ impl Default for ApplicationContext {
 }
 
 impl Container for ApplicationContext {
-    fn register(&self, definition: BeanDefinition) -> ContainerResult<()> {
+    fn register(&self, definition: BeanDefinition) -> Result<()> {
         // 委托给 BeanFactory
         self.bean_factory.register_bean_definition(definition.name.clone(), definition)
     }
 
-    fn get_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    fn get_bean(&self, name: &str) -> Result<Arc<dyn Any + Send + Sync>> {
         // 委托给 BeanFactory
         self.bean_factory.get_bean(name)
     }
 
-    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>> {
+    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> Result<Arc<T>> {
         // 委托给 BeanFactory
         self.bean_factory.get_bean_by_type::<T>()
     }
@@ -570,7 +567,7 @@ impl ApplicationContextBuilder {
     }
 
     /// 注册 Bean
-    pub fn register(self, definition: BeanDefinition) -> ContainerResult<Self> {
+    pub fn register(self, definition: BeanDefinition) -> Result<Self> {
         self.context.register(definition)?;
         Ok(self)
     }
@@ -580,10 +577,10 @@ impl ApplicationContextBuilder {
         self,
         name: impl Into<String>,
         factory: F,
-    ) -> ContainerResult<Self>
+    ) -> Result<Self>
     where
         T: Any + Send + Sync,
-        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
+        F: Fn() -> Result<T> + Send + Sync + 'static,
     {
         self.context.register_singleton(name, factory)?;
         Ok(self)
@@ -594,10 +591,10 @@ impl ApplicationContextBuilder {
         self,
         name: impl Into<String>,
         factory: F,
-    ) -> ContainerResult<Self>
+    ) -> Result<Self>
     where
         T: Any + Send + Sync,
-        F: Fn() -> ContainerResult<T> + Send + Sync + 'static,
+        F: Fn() -> Result<T> + Send + Sync + 'static,
     {
         self.context.register_prototype(name, factory)?;
         Ok(self)
@@ -621,7 +618,7 @@ impl ApplicationContextBuilder {
     }
 
     /// 构建上下文
-    pub fn build(self) -> ContainerResult<Arc<ApplicationContext>> {
+    pub fn build(self) -> Result<Arc<ApplicationContext>> {
         // 根据 async_events 设置创建最终的 ApplicationContext
         let context = if self.async_events {
             // 需要异步事件处理，创建新的 context 并复制配置

@@ -353,7 +353,7 @@ impl Default for GlobalExceptionHandlerRegistry {
 /// 🔥 框架核心：自动发现并构建异常处理器注册表
 pub async fn build_exception_handler_registry(
     context: &Arc<ApplicationContext>,
-) -> chimera_core::ApplicationResult<GlobalExceptionHandlerRegistry> {
+) -> chimera_core::Result<GlobalExceptionHandlerRegistry> {
     // 使用 inventory 机制自动发现所有异常处理器
     crate::exception_handler_registry::build_exception_handler_registry_from_inventory(context).await
 }
@@ -365,7 +365,7 @@ impl GlobalExceptionHandlerRegistry {
     pub async fn auto_register_type<T>(
         &mut self,
         context: &Arc<ApplicationContext>,
-    ) -> chimera_core::ApplicationResult<bool>
+    ) -> chimera_core::Result<bool>
     where
         T: GlobalExceptionHandler + Clone + 'static,
     {
@@ -388,7 +388,7 @@ impl GlobalExceptionHandlerRegistry {
     pub async fn auto_register_common_types(
         &mut self,
         _context: &Arc<ApplicationContext>,
-    ) -> chimera_core::ApplicationResult<usize> {
+    ) -> chimera_core::Result<usize> {
         let initial_count = self.len();
 
         // 这里可以添加常见的异常处理器类型

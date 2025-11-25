@@ -31,7 +31,7 @@ impl ApplicationPlugin for WebPlugin {
     }
 
     /// 配置阶段
-    fn configure(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
+    fn configure(&self, context: &Arc<ApplicationContext>) -> Result<()> {
         let env = Arc::clone(context.environment());
 
         // 注册 ServerProperties Bean
@@ -39,32 +39,28 @@ impl ApplicationPlugin for WebPlugin {
             .register_singleton("serverProperties", {
                 let env = Arc::clone(&env);
                 move || Ok(ServerProperties::from_environment(&env))
-            })
-            .map_err(|e| ApplicationError::Container(e))?;
+            })?;
 
         // 注册 MultipartProperties Bean
         context
             .register_singleton("multipartProperties", {
                 let env = Arc::clone(&env);
                 move || Ok(MultipartProperties::from_environment(&env))
-            })
-            .map_err(|e| ApplicationError::Container(e))?;
+            })?;
 
         // 注册 TemplateProperties Bean
         context
             .register_singleton("templateProperties", {
                 let env = Arc::clone(&env);
                 move || Ok(TemplateProperties::from_environment(&env))
-            })
-            .map_err(|e| ApplicationError::Container(e))?;
+            })?;
 
         // 注册 TemplateEngine Bean（如果启用）
         match TemplateEngine::from_environment(&env) {
             Ok(engine) => {
                 tracing::info!("Template engine initialized and registered as bean");
                 context
-                    .register_singleton("templateEngine", move || Ok(engine.clone()))
-                    .map_err(|e| ApplicationError::Container(e))?;
+                    .register_singleton("templateEngine", move || Ok(engine.clone()))?;
             }
             Err(e) => {
                 tracing::debug!("Template engine not initialized: {}", e);
@@ -75,7 +71,7 @@ impl ApplicationPlugin for WebPlugin {
     }
 
     /// 启动阶段 - 启动 Web 服务器
-    async fn on_startup(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
+    async fn on_startup(&self, context: &Arc<ApplicationContext>) -> Result<()> {
         // 创建并启动服务器（在后台运行）
         let context_clone = Arc::clone(context);
         tokio::spawn(async move {
@@ -107,7 +103,7 @@ impl ApplicationPlugin for WebPlugin {
     }
 
     /// 关闭阶段
-    async fn on_shutdown(&self, _context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
+    async fn on_shutdown(&self, _context: &Arc<ApplicationContext>) -> Result<()> {
         tracing::info!("Web server shutting down");
         Ok(())
     }

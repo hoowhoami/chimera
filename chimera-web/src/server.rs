@@ -97,15 +97,15 @@ pub struct ChimeraWebServer {
 
 impl ChimeraWebServer {
     /// 创建新的 Web 服务器
-    pub async fn new(context: Arc<ApplicationContext>) -> ApplicationResult<Self> {
+    pub async fn new(context: Arc<ApplicationContext>) -> Result<Self> {
         // 从容器获取配置
         let config = context
             .get_bean_by_type::<ServerProperties>()
             .map_err(|e| {
-                ApplicationError::Other(format!(
+                anyhow::anyhow!(
                     "Failed to get ServerProperties bean: {}.",
                     e
-                ))
+                )
             })?;
 
         Ok(Self {
@@ -123,7 +123,7 @@ impl ChimeraWebServer {
     }
 
     /// 初始化异常处理器和拦截器
-    pub async fn initialize_middleware(mut self) -> ApplicationResult<Self> {
+    pub async fn initialize_middleware(mut self) -> Result<Self> {
         // 初始化异常处理器注册表
         if self.config.enable_global_exception_handling {
             let exception_registry = build_exception_handler_registry(&self.context).await?;
@@ -135,7 +135,7 @@ impl ChimeraWebServer {
     }
 
     /// 自动注册所有控制器路由
-    pub fn auto_register_controllers(mut self) -> ApplicationResult<Self> {
+    pub fn auto_register_controllers(mut self) -> Result<Self> {
         use std::collections::HashMap;
 
         let mut router = self.router.unwrap_or_else(|| Router::new());
@@ -182,7 +182,7 @@ impl ChimeraWebServer {
             error_msg.push_str("Please resolve these route conflicts before starting the server.");
 
             tracing::error!("{}", error_msg);
-            return Err(chimera_core::ApplicationError::Other(error_msg));
+            return Err(anyhow::anyhow!("{}", error_msg));
         }
 
         // 第二遍：注册所有控制器路由
@@ -231,7 +231,7 @@ impl ChimeraWebServer {
     }
 
     /// 便捷方法：完整的自动配置
-    pub async fn auto_configure(self) -> ApplicationResult<Self> {
+    pub async fn auto_configure(self) -> Result<Self> {
         Ok(self.initialize_middleware()
             .await?
             .auto_register_controllers()?
@@ -239,7 +239,7 @@ impl ChimeraWebServer {
     }
 
     /// 启动服务器
-    pub async fn run(self) -> ApplicationResult<()> {
+    pub async fn run(self) -> Result<()> {
         let addr = self.config.address();
 
         // 获取路由，如果没有则创建空路由
@@ -249,7 +249,7 @@ impl ChimeraWebServer {
 
         let listener = TcpListener::bind(&addr)
             .await
-            .map_err(|e| ApplicationError::Other(format!("Failed to bind to {}: {}", addr, e)))?;
+            .map_err(|e| anyhow::anyhow!("Failed to bind to {}: {}", addr, e))?;
 
         tracing::info!(
             "Web Server (Axum) started on port(s): {} (http)",
@@ -258,7 +258,7 @@ impl ChimeraWebServer {
 
         axum::serve(listener, app)
             .await
-            .map_err(|e| ApplicationError::Other(format!("Server error: {}", e)))?;
+            .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
 
         Ok(())
     }

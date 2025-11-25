@@ -12,7 +12,7 @@ pub struct StartupService {
 }
 
 impl SmartInitializingSingleton for StartupService {
-    fn after_singletons_instantiated(&self) -> ContainerResult<()> {
+    fn after_singletons_instantiated(&self) -> Result<()> {
         tracing::info!("🚀 [SmartInitializingSingleton] All singletons initialized!");
         tracing::info!("   - Application context: {}", self.app_context.get_app_name().unwrap_or_else(|| "unnamed".to_string()));
         tracing::info!("   - Starting background tasks...");

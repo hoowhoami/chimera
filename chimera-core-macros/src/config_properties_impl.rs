@@ -186,13 +186,13 @@ pub(crate) fn derive_configuration_properties_impl(input: TokenStream) -> TokenS
             }
 
             /// 注册到容器（内部使用）
-            fn __register_to_context(context: &std::sync::Arc<chimera_core::ApplicationContext>) -> chimera_core::ContainerResult<()> {
+            fn __register_to_context(context: &std::sync::Arc<chimera_core::ApplicationContext>) -> chimera_core::Result<()> {
                 let env = std::sync::Arc::clone(context.environment());
 
                 // 绑定配置
                 let instance = Self::bind(&env)
-                    .map_err(|e| chimera_core::ContainerError::BeanCreationFailed(
-                        format!("{}: {}", #bean_name, e)
+                    .map_err(|e| anyhow::anyhow!(
+                        "{}: {}", #bean_name, e
                     ))?;
 
                 // 注册为单例 Bean

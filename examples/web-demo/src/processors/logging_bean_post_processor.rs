@@ -26,7 +26,7 @@ impl BeanPostProcessor for LoggingBeanPostProcessor {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         tracing::debug!("📦 [BeanPostProcessor] Before initialization: '{}'", bean_name);
         Ok(bean)
     }
@@ -35,7 +35,7 @@ impl BeanPostProcessor for LoggingBeanPostProcessor {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         tracing::info!("✅ [BeanPostProcessor] Bean '{}' initialized successfully", bean_name);
         Ok(bean)
     }

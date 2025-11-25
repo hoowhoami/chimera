@@ -2,14 +2,14 @@
 //!
 //! 提供 Spring 风格的 Bean 生命周期管理接口
 
-use crate::error::ContainerResult;
+use crate::error::Result;
 use crate::ApplicationContext;
 use std::any::Any;
 use std::sync::Arc;
 
 /// BeanFactoryPostProcessor 获取函数类型
 pub type BeanFactoryPostProcessorGetter =
-    fn(&crate::ApplicationContext) -> ContainerResult<Arc<dyn BeanFactoryPostProcessor>>;
+    fn(&crate::ApplicationContext) -> Result<Arc<dyn BeanFactoryPostProcessor>>;
 
 /// BeanFactoryPostProcessor 标记 - 用于 inventory 收集
 ///
@@ -43,7 +43,7 @@ inventory::collect!(BeanFactoryPostProcessorMarker);
 /// pub struct CustomBeanFactoryPostProcessor;
 ///
 /// impl BeanFactoryPostProcessor for CustomBeanFactoryPostProcessor {
-///     fn post_process_bean_factory(&self, context: &ApplicationContext) -> ContainerResult<()> {
+///     fn post_process_bean_factory(&self, context: &ApplicationContext) -> Result<()> {
 ///         // 获取 BeanFactory
 ///         let bean_factory = context.get_bean_factory();
 ///
@@ -66,7 +66,7 @@ pub trait BeanFactoryPostProcessor: Send + Sync {
     ///
     /// # 返回
     /// 成功返回 Ok(())，失败返回错误
-    fn post_process_bean_factory(&self, context: &crate::ApplicationContext) -> ContainerResult<()>;
+    fn post_process_bean_factory(&self, context: &crate::ApplicationContext) -> Result<()>;
 
     /// 获取处理器的优先级（数字越小优先级越高）
     ///
@@ -77,7 +77,7 @@ pub trait BeanFactoryPostProcessor: Send + Sync {
 }
 
 /// BeanPostProcessor 获取函数类型
-pub type BeanPostProcessorGetter = fn(&Arc<ApplicationContext>) -> ContainerResult<Arc<dyn BeanPostProcessor>>;
+pub type BeanPostProcessorGetter = fn(&Arc<ApplicationContext>) -> Result<Arc<dyn BeanPostProcessor>>;
 
 /// BeanPostProcessor 标记 - 用于 inventory 收集
 ///
@@ -117,7 +117,7 @@ inventory::collect!(BeanPostProcessorMarker);
 ///         &self,
 ///         bean: Arc<dyn Any + Send + Sync>,
 ///         bean_name: &str
-///     ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+///     ) -> Result<Arc<dyn Any + Send + Sync>> {
 ///         tracing::info!("Before initialization: {}", bean_name);
 ///         Ok(bean)
 ///     }
@@ -126,7 +126,7 @@ inventory::collect!(BeanPostProcessorMarker);
 ///         &self,
 ///         bean: Arc<dyn Any + Send + Sync>,
 ///         bean_name: &str
-///     ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+///     ) -> Result<Arc<dyn Any + Send + Sync>> {
 ///         tracing::info!("After initialization: {}", bean_name);
 ///         Ok(bean)
 ///     }
@@ -145,7 +145,7 @@ pub trait BeanPostProcessor: Send + Sync {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         _bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         // 默认实现：直接返回原始 Bean
         Ok(bean)
     }
@@ -167,7 +167,7 @@ pub trait BeanPostProcessor: Send + Sync {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         _bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         // 默认实现：直接返回原始 Bean
         Ok(bean)
     }
@@ -187,7 +187,7 @@ pub trait BeanPostProcessor: Send + Sync {
 
 /// SmartInitializingSingleton 获取函数类型
 pub type SmartInitializingSingletonGetter =
-    fn(&Arc<ApplicationContext>) -> ContainerResult<Arc<dyn SmartInitializingSingleton>>;
+    fn(&Arc<ApplicationContext>) -> Result<Arc<dyn SmartInitializingSingleton>>;
 
 /// SmartInitializingSingleton 标记 - 用于 inventory 收集
 ///
@@ -220,7 +220,7 @@ inventory::collect!(SmartInitializingSingletonMarker);
 /// pub struct StartupService;
 ///
 /// impl SmartInitializingSingleton for StartupService {
-///     fn after_singletons_instantiated(&self) -> ContainerResult<()> {
+///     fn after_singletons_instantiated(&self) -> Result<()> {
 ///         // 在所有单例 Bean 初始化完成后执行
 ///         tracing::info!("All singletons initialized, starting background tasks");
 ///         Ok(())
@@ -234,5 +234,5 @@ pub trait SmartInitializingSingleton: Send + Sync {
     ///
     /// # 返回
     /// 成功返回 Ok(())，失败返回错误
-    fn after_singletons_instantiated(&self) -> ContainerResult<()>;
+    fn after_singletons_instantiated(&self) -> Result<()>;
 }

@@ -85,7 +85,7 @@ struct SystemService {
 
 #[component]
 impl SystemService {
-    async fn demonstrate_core_components(&self) -> ApplicationResult<()> {
+    async fn demonstrate_core_components(&self) -> Result<()> {
         println!("System Service - Core Components Injection Demo:");
 
         // 使用注入的 Environment
@@ -118,7 +118,7 @@ impl SystemService {
         Ok(())
     }
 
-    async fn demonstrate_context_usage(&self) -> ApplicationResult<()> {
+    async fn demonstrate_context_usage(&self) -> Result<()> {
         println!("🔍 Advanced Context Usage Demo:");
 
         // 通过注入的 ApplicationContext 动态获取其他 bean
@@ -182,7 +182,7 @@ struct CacheService {
 
 #[component]
 impl CacheService {
-    fn set(&self, key: &str, value: &str) -> ApplicationResult<()> {
+    fn set(&self, key: &str, value: &str) -> Result<()> {
         println!(
             "Cache SET {}: {} (Redis: {}:{})",
             key, value, self.redis_config.host, self.redis_config.port
@@ -190,7 +190,7 @@ impl CacheService {
         Ok(())
     }
 
-    fn get(&self, key: &str) -> ApplicationResult<Option<String>> {
+    fn get(&self, key: &str) -> Result<Option<String>> {
         println!(
             "Cache GET {} (connections: {})",
             key, self.redis_config.max_connections
@@ -210,12 +210,12 @@ struct DatabaseService {
 
 #[component]
 impl DatabaseService {
-    fn init(&mut self) -> ContainerResult<()> {
+    fn init(&mut self) -> Result<()> {
         println!("Database connecting to: {}", self.config.url);
         Ok(())
     }
 
-    fn destroy(&mut self) -> ContainerResult<()> {
+    fn destroy(&mut self) -> Result<()> {
         println!(
             "Database closing connections (pool size: {})",
             self.config.pool_size
@@ -223,7 +223,7 @@ impl DatabaseService {
         Ok(())
     }
 
-    fn save_user(&self, user_id: &str, username: &str) -> ApplicationResult<()> {
+    fn save_user(&self, user_id: &str, username: &str) -> Result<()> {
         println!(
             "Database saving user: {} ({}) [timeout: {}ms]",
             username, user_id, self.config.timeout_ms
@@ -248,7 +248,7 @@ struct UserService {
 
 #[component]
 impl UserService {
-    fn register_user(&self, username: &str) -> ApplicationResult<String> {
+    fn register_user(&self, username: &str) -> Result<String> {
         let user_id = format!("user_{}", rand::random::<u32>());
 
         // 业务逻辑演示
@@ -262,7 +262,7 @@ impl UserService {
         Ok(user_id)
     }
 
-    fn get_user(&self, user_id: &str) -> ApplicationResult<Option<String>> {
+    fn get_user(&self, user_id: &str) -> Result<Option<String>> {
         // 先尝试从缓存获取
         if let Ok(Some(cached)) = self.cache.get(&format!("user:{}", user_id)) {
             println!("User found in cache: {}", cached);
@@ -301,7 +301,7 @@ struct OrderService {
 
 #[component]
 impl OrderService {
-    fn create_order(&self, order_id: &str, amount: i64) -> ApplicationResult<()> {
+    fn create_order(&self, order_id: &str, amount: i64) -> Result<()> {
         println!("Creating order: {} (amount: {})", order_id, amount);
 
         // 保存到数据库
@@ -331,7 +331,7 @@ struct PaymentService {
 
 #[component]
 impl PaymentService {
-    fn process_payment(&self, amount: i64) -> ApplicationResult<()> {
+    fn process_payment(&self, amount: i64) -> Result<()> {
         println!("💳 Processing payment: {}", amount);
 
         if let Some(service) = &self.optional_service {
@@ -426,7 +426,7 @@ pub mod rand {
 }
 
 #[tokio::main]
-async fn main() -> ApplicationResult<()> {
+async fn main() -> Result<()> {
     println!("Chimera Framework - Comprehensive Demo\n");
 
     // 配置文件会自动从以下位置查找（按优先级）：

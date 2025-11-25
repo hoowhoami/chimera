@@ -46,7 +46,7 @@ pub struct CustomBeanFactoryPostProcessor {
 }
 
 impl BeanFactoryPostProcessor for CustomBeanFactoryPostProcessor {
-    fn post_process_bean_factory(&self, context: &ApplicationContext) -> ContainerResult<()> {
+    fn post_process_bean_factory(&self, context: &ApplicationContext) -> Result<()> {
         tracing::info!("🔧 [BeanFactoryPostProcessor] Processing bean factory...");
 
         // 获取 BeanFactory

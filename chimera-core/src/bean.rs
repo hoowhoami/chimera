@@ -1,7 +1,7 @@
 use std::any::{Any, TypeId};
 use std::fmt;
 use std::sync::Arc;
-use crate::{ApplicationContext, ContainerResult, Scope};
+use crate::{ApplicationContext, Result, Scope};
 
 /// Bean trait - 所有可以被容器管理的类型都需要实现此 trait
 pub trait Bean: Any + Send + Sync {
@@ -19,7 +19,7 @@ impl<T: Any + Send + Sync> Bean for T {}
 /// 类似 Spring 的 FactoryBean，负责创建具体的 Bean 实例
 pub trait FactoryBean: Send + Sync {
     /// 创建 Bean 实例（同步方法）
-    fn create(&self) -> ContainerResult<Box<dyn Any + Send + Sync>>;
+    fn create(&self) -> Result<Box<dyn Any + Send + Sync>>;
 
     /// 获取 Bean 的类型 ID
     fn type_id(&self) -> TypeId;
@@ -29,8 +29,8 @@ pub trait FactoryBean: Send + Sync {
 }
 
 /// 生命周期回调类型
-pub type InitCallback = Box<dyn Fn(&mut dyn Any) -> ContainerResult<()> + Send + Sync>;
-pub type DestroyCallback = Box<dyn Fn(&mut dyn Any) -> ContainerResult<()> + Send + Sync>;
+pub type InitCallback = Box<dyn Fn(&mut dyn Any) -> Result<()> + Send + Sync>;
+pub type DestroyCallback = Box<dyn Fn(&mut dyn Any) -> Result<()> + Send + Sync>;
 
 /// Bean 定义 - 描述如何创建和管理 Bean
 pub struct BeanDefinition {
@@ -94,7 +94,7 @@ impl BeanDefinition {
     /// 设置初始化回调
     pub fn with_init<F>(mut self, init_fn: F) -> Self
     where
-        F: Fn(&mut dyn Any) -> ContainerResult<()> + Send + Sync + 'static,
+        F: Fn(&mut dyn Any) -> Result<()> + Send + Sync + 'static,
     {
         self.init_callback = Some(Box::new(init_fn));
         self
@@ -103,7 +103,7 @@ impl BeanDefinition {
     /// 设置销毁回调
     pub fn with_destroy<F>(mut self, destroy_fn: F) -> Self
     where
-        F: Fn(&mut dyn Any) -> ContainerResult<()> + Send + Sync + 'static,
+        F: Fn(&mut dyn Any) -> Result<()> + Send + Sync + 'static,
     {
         self.destroy_callback = Some(Box::new(destroy_fn));
         self
@@ -126,7 +126,7 @@ impl fmt::Debug for BeanDefinition {
 pub struct FunctionFactory<T, F>
 where
     T: Any + Send + Sync,
-    F: Fn() -> ContainerResult<T> + Send + Sync,
+    F: Fn() -> Result<T> + Send + Sync,
 {
     factory_fn: F,
     _phantom: std::marker::PhantomData<T>,
@@ -135,7 +135,7 @@ where
 impl<T, F> FunctionFactory<T, F>
 where
     T: Any + Send + Sync,
-    F: Fn() -> ContainerResult<T> + Send + Sync,
+    F: Fn() -> Result<T> + Send + Sync,
 {
     pub fn new(factory_fn: F) -> Self {
         Self {
@@ -148,9 +148,9 @@ where
 impl<T, F> FactoryBean for FunctionFactory<T, F>
 where
     T: Any + Send + Sync + 'static,
-    F: Fn() -> ContainerResult<T> + Send + Sync,
+    F: Fn() -> Result<T> + Send + Sync,
 {
-    fn create(&self) -> ContainerResult<Box<dyn Any + Send + Sync>> {
+    fn create(&self) -> Result<Box<dyn Any + Send + Sync>> {
         let instance = (self.factory_fn)()?;
         Ok(Box::new(instance) as Box<dyn Any + Send + Sync>)
     }
@@ -170,7 +170,7 @@ where
 pub type BeanMethodRegistrar = fn(
     &Arc<ApplicationContext>,
     Arc<dyn Any + Send + Sync>,
-) -> ContainerResult<()>;
+) -> Result<()>;
 
 /// Bean方法注册表
 ///

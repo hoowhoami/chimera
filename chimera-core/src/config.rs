@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::RwLock;
+use anyhow::{Context, Result};
 
 /// 配置值类型
 #[derive(Debug, Clone)]
@@ -278,18 +279,18 @@ pub struct TomlPropertySource {
 
 impl TomlPropertySource {
     /// 从文件加载 TOML 配置
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, String> {
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let content = fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read config file {:?}: {}", path, e))?;
+            .context(format!("Failed to read config file: {}", path.display()))?;
 
         Self::from_str(&content, path.to_string_lossy().to_string())
     }
 
     /// 从字符串解析 TOML 配置
-    pub fn from_str(content: &str, name: String) -> Result<Self, String> {
+    pub fn from_str(content: &str, name: String) -> Result<Self> {
         let value: toml::Value = toml::from_str(content)
-            .map_err(|e| format!("Failed to parse TOML: {}", e))?;
+            .context("Failed to parse TOML")?;
 
         let mut properties = HashMap::new();
         Self::flatten_toml(&value, String::new(), &mut properties);

@@ -35,7 +35,7 @@ impl BeanPostProcessor for TimingBeanPostProcessor {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         let mut times = self.start_times.lock().unwrap();
         times.insert(bean_name.to_string(), Instant::now());
         Ok(bean)
@@ -45,7 +45,7 @@ impl BeanPostProcessor for TimingBeanPostProcessor {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         let mut times = self.start_times.lock().unwrap();
         if let Some(start_time) = times.remove(bean_name) {
             let elapsed = start_time.elapsed();

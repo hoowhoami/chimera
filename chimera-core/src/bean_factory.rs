@@ -6,10 +6,11 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
+use anyhow::{Context, anyhow, bail};
 
 use crate::{
     bean::BeanDefinition,
-    error::{ContainerError, ContainerResult},
+    Result,
     lifecycle::BeanPostProcessor,
     utils::dependency::CreationTracker,
 };
@@ -21,7 +22,7 @@ use crate::{
 /// 注意：此 trait 不包含泛型方法，因此可以作为 trait object 使用
 pub trait BeanFactory: Send + Sync {
     /// 通过名称获取 Bean
-    fn get_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>>;
+    fn get_bean(&self, name: &str) -> Result<Arc<dyn Any + Send + Sync>>;
 
     /// 检查是否包含指定名称的 Bean
     fn contains_bean(&self, name: &str) -> bool;
@@ -32,7 +33,7 @@ pub trait BeanFactory: Send + Sync {
 /// 提供泛型方法，不能作为 trait object 使用
 pub trait BeanFactoryExt: BeanFactory {
     /// 通过类型获取 Bean
-    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>>;
+    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> Result<Arc<T>>;
 
     /// 检查是否包含指定类型的 Bean
     fn contains_bean_by_type<T: Any + Send + Sync>(&self) -> bool;
@@ -57,16 +58,16 @@ pub trait ListableBeanFactory: BeanFactory {
 /// 提供配置和管理 Bean 工厂的能力
 pub trait ConfigurableBeanFactory: BeanFactory {
     /// 注册 Bean 定义
-    fn register_bean_definition(&self, name: String, definition: BeanDefinition) -> ContainerResult<()>;
+    fn register_bean_definition(&self, name: String, definition: BeanDefinition) -> Result<()>;
 
     /// 检查是否包含指定的 Bean 定义
     fn contains_bean_definition(&self, name: &str) -> bool;
 
     /// 移除 Bean 定义
-    fn remove_bean_definition(&self, name: &str) -> ContainerResult<()>;
+    fn remove_bean_definition(&self, name: &str) -> Result<()>;
 
     /// 修改 Bean 定义
-    fn modify_bean_definition<F>(&self, name: &str, modifier: F) -> ContainerResult<()>
+    fn modify_bean_definition<F>(&self, name: &str, modifier: F) -> Result<()>
     where
         F: FnOnce(&mut BeanDefinition);
 
@@ -83,7 +84,7 @@ pub trait ConfigurableBeanFactory: BeanFactory {
 /// 这是 BeanFactoryPostProcessor 接收的参数类型
 pub trait ConfigurableListableBeanFactory: ListableBeanFactory + ConfigurableBeanFactory {
     /// 预实例化所有单例 Bean
-    fn preinstantiate_singletons(&self) -> ContainerResult<()>;
+    fn preinstantiate_singletons(&self) -> Result<()>;
 
     /// 冻结配置（不再允许修改 Bean 定义）
     fn freeze_configuration(&self);
@@ -92,7 +93,7 @@ pub trait ConfigurableListableBeanFactory: ListableBeanFactory + ConfigurableBea
     fn is_configuration_frozen(&self) -> bool;
 
     /// 销毁所有单例 Bean（调用 destroy 回调）
-    fn destroy_singletons(&self) -> ContainerResult<()>;
+    fn destroy_singletons(&self) -> Result<()>;
 
     /// 获取所有 Bean 定义（用于依赖验证等）
     fn get_bean_definitions(&self) -> std::collections::HashMap<String, Vec<String>>;
@@ -144,41 +145,41 @@ impl DefaultListableBeanFactory {
     /// 5. InitializingBean.afterPropertiesSet - 通过 init callback 实现
     /// 6. 自定义 init-method
     /// 7. BeanPostProcessor.postProcessAfterInitialization
-    fn create_bean_internal(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    fn create_bean_internal(&self, name: &str) -> Result<Arc<dyn Any + Send + Sync>> {
         let definitions = self.definitions.read();
 
         let definition = definitions
             .get(name)
-            .ok_or_else(|| ContainerError::BeanNotFound(name.to_string()))?;
+            .ok_or_else(|| anyhow!("Bean not found: {}", name))?;
 
         // 检查循环依赖
         if self
             .creation_tracker
             .is_creating(name)
-            .map_err(|e| ContainerError::Other(anyhow::anyhow!("{}", e)))?
+            .map_err(|e| anyhow!("Failed to check creation status: {}", e))?
         {
             let creating_chain = self
                 .creation_tracker
                 .current_creating()
-                .map_err(|e| ContainerError::Other(anyhow::anyhow!("{}", e)))?;
+                .map_err(|e| anyhow!("Failed to get creation chain: {}", e))?;
 
-            return Err(ContainerError::CircularDependency(format!(
-                "{} -> {}",
+            bail!(
+                "Circular dependency detected: {} -> {}",
                 creating_chain.join(" -> "),
                 name
-            )));
+            );
         }
 
         // 标记为正在创建
         if !self
             .creation_tracker
             .start_creating(name)
-            .map_err(|e| ContainerError::Other(anyhow::anyhow!("{}", e)))?
+            .map_err(|e| anyhow!("Failed to start creation tracking: {}", e))?
         {
-            return Err(ContainerError::CircularDependency(format!(
-                "Detected circular dependency on '{}'",
+            bail!(
+                "Circular dependency detected on '{}'",
                 name
-            )));
+            );
         }
 
         // 使用 RAII 模式确保在任何情况下都会清理标记
@@ -205,13 +206,8 @@ impl DefaultListableBeanFactory {
         };
 
         // 1. 实例化 Bean（构造函数 + 依赖注入）
-        let instance = definition.factory.create().map_err(|e| {
-            // 保留循环依赖错误，不要包装它
-            match e {
-                ContainerError::CircularDependency(_) => e,
-                _ => ContainerError::BeanCreationFailed(format!("{}: {}", name, e)),
-            }
-        })?;
+        let instance = definition.factory.create()
+            .context(format!("Failed to create bean '{}'", name))?;
 
         let mut bean: Arc<dyn Any + Send + Sync> = Arc::from(instance);
 
@@ -222,9 +218,8 @@ impl DefaultListableBeanFactory {
         // 通过 init callback 统一处理
         if let Some(ref init_fn) = definition.init_callback {
             if let Some(bean_mut) = Arc::get_mut(&mut bean) {
-                init_fn(bean_mut).map_err(|e| {
-                    ContainerError::BeanCreationFailed(format!("{} init failed: {}", name, e))
-                })?;
+                init_fn(bean_mut)
+                    .context(format!("Bean '{}' init callback failed", name))?;
             } else {
                 tracing::warn!("Cannot call init on bean '{}': multiple references exist", name);
             }
@@ -241,7 +236,7 @@ impl DefaultListableBeanFactory {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         let processors = self.bean_post_processors.read();
         let mut current_bean = bean;
 
@@ -257,7 +252,7 @@ impl DefaultListableBeanFactory {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         let processors = self.bean_post_processors.read();
         let mut current_bean = bean;
 
@@ -276,7 +271,7 @@ impl Default for DefaultListableBeanFactory {
 }
 
 impl BeanFactory for DefaultListableBeanFactory {
-    fn get_bean(&self, name: &str) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    fn get_bean(&self, name: &str) -> Result<Arc<dyn Any + Send + Sync>> {
         tracing::trace!("Requesting bean: '{}'", name);
 
         // 先检查定义是否存在
@@ -285,7 +280,7 @@ impl BeanFactory for DefaultListableBeanFactory {
 
             let definition = definitions.get(name).ok_or_else(|| {
                 tracing::debug!("Bean '{}' not found in container", name);
-                ContainerError::BeanNotFound(name.to_string())
+                anyhow!("Bean not found: {}", name)
             })?;
 
             definition.scope
@@ -329,7 +324,7 @@ impl BeanFactory for DefaultListableBeanFactory {
 }
 
 impl BeanFactoryExt for DefaultListableBeanFactory {
-    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> ContainerResult<Arc<T>> {
+    fn get_bean_by_type<T: Any + Send + Sync>(&self) -> Result<Arc<T>> {
         let type_id = TypeId::of::<T>();
         let type_name = std::any::type_name::<T>();
 
@@ -342,10 +337,7 @@ impl BeanFactoryExt for DefaultListableBeanFactory {
         if let Some(name) = name_opt {
             let bean = self.get_bean(&name)?;
             bean.downcast::<T>()
-                .map_err(|_| ContainerError::TypeMismatch {
-                    expected: type_name.to_string(),
-                    found: "unknown".to_string(),
-                })
+                .map_err(|_| anyhow!("Type mismatch: expected {}, found unknown", type_name))
         } else {
             // TypeId查找失败，尝试类型名称匹配
             let name_opt = {
@@ -364,15 +356,9 @@ impl BeanFactoryExt for DefaultListableBeanFactory {
             if let Some(name) = name_opt {
                 let bean = self.get_bean(&name)?;
                 bean.downcast::<T>()
-                    .map_err(|_| ContainerError::TypeMismatch {
-                        expected: type_name.to_string(),
-                        found: "unknown".to_string(),
-                    })
+                    .map_err(|_| anyhow!("Type mismatch: expected {}, found unknown", type_name))
             } else {
-                Err(ContainerError::BeanNotFound(format!(
-                    "No bean found for type '{}'",
-                    type_name
-                )))
+                bail!("Bean not found: No bean found for type '{}'", type_name)
             }
         }
     }
@@ -420,12 +406,10 @@ impl ListableBeanFactory for DefaultListableBeanFactory {
 
 
 impl ConfigurableBeanFactory for DefaultListableBeanFactory {
-    fn register_bean_definition(&self, name: String, definition: BeanDefinition) -> ContainerResult<()> {
+    fn register_bean_definition(&self, name: String, definition: BeanDefinition) -> Result<()> {
         // 检查配置是否已冻结
         if *self.configuration_frozen.read() {
-            return Err(ContainerError::Other(anyhow::anyhow!(
-                "Cannot register bean definition: configuration is frozen"
-            )));
+            bail!("Cannot register bean definition: configuration is frozen");
         }
 
         let type_id = definition.factory.type_id();
@@ -443,7 +427,7 @@ impl ConfigurableBeanFactory for DefaultListableBeanFactory {
             let definitions = self.definitions.read();
             if definitions.contains_key(&name) {
                 tracing::warn!("Bean '{}' already exists, registration failed", name);
-                return Err(ContainerError::BeanAlreadyExists(name));
+                bail!("Bean already exists: {}", name);
             }
         }
 
@@ -467,18 +451,16 @@ impl ConfigurableBeanFactory for DefaultListableBeanFactory {
         self.definitions.read().contains_key(name)
     }
 
-    fn remove_bean_definition(&self, name: &str) -> ContainerResult<()> {
+    fn remove_bean_definition(&self, name: &str) -> Result<()> {
         // 检查配置是否已冻结
         if *self.configuration_frozen.read() {
-            return Err(ContainerError::Other(anyhow::anyhow!(
-                "Cannot remove bean definition: configuration is frozen"
-            )));
+            bail!("Cannot remove bean definition: configuration is frozen");
         }
 
         let mut definitions = self.definitions.write();
         definitions
             .remove(name)
-            .ok_or_else(|| ContainerError::BeanNotFound(name.to_string()))?;
+            .ok_or_else(|| anyhow!("Bean not found: {}", name))?;
 
         tracing::debug!("Bean definition removed: '{}'", name);
         Ok(())
@@ -492,15 +474,13 @@ impl ConfigurableBeanFactory for DefaultListableBeanFactory {
         processors.sort_by_key(|p| p.order());
     }
 
-    fn modify_bean_definition<F>(&self, name: &str, modifier: F) -> ContainerResult<()>
+    fn modify_bean_definition<F>(&self, name: &str, modifier: F) -> Result<()>
     where
         F: FnOnce(&mut BeanDefinition),
     {
         // 检查配置是否已冻结
         if *self.configuration_frozen.read() {
-            return Err(ContainerError::Other(anyhow::anyhow!(
-                "Cannot modify bean definition: configuration is frozen"
-            )));
+            bail!("Cannot modify bean definition: configuration is frozen");
         }
 
         let mut definitions = self.definitions.write();
@@ -509,7 +489,7 @@ impl ConfigurableBeanFactory for DefaultListableBeanFactory {
             tracing::debug!("Bean definition '{}' modified successfully", name);
             Ok(())
         } else {
-            Err(ContainerError::BeanNotFound(name.to_string()))
+            bail!("Bean not found: {}", name)
         }
     }
 
@@ -519,7 +499,7 @@ impl ConfigurableBeanFactory for DefaultListableBeanFactory {
 }
 
 impl ConfigurableListableBeanFactory for DefaultListableBeanFactory {
-    fn preinstantiate_singletons(&self) -> ContainerResult<()> {
+    fn preinstantiate_singletons(&self) -> Result<()> {
         // 获取所有非延迟加载的单例 bean
         let bean_names: Vec<String> = {
             let definitions = self.definitions.read();
@@ -543,14 +523,14 @@ impl ConfigurableListableBeanFactory for DefaultListableBeanFactory {
 
         // 使用拓扑排序确定初始化顺序
         let sorted_beans = crate::utils::dependency::topological_sort(&filtered_deps)
-            .map_err(|e| ContainerError::Other(anyhow::anyhow!("Failed to sort beans: {}", e)))?;
+            .map_err(|e| anyhow!("Failed to sort beans by dependency order: {}", e))?;
 
         tracing::debug!("Initializing beans in dependency order: {:?}", sorted_beans);
 
         // 按依赖顺序初始化 bean
-        for name in sorted_beans {
+        for name in &sorted_beans {
             tracing::debug!("Creating shared instance of singleton bean '{}'", name);
-            self.get_bean(&name)?;
+            self.get_bean(name)?;
         }
 
         Ok(())
@@ -566,7 +546,7 @@ impl ConfigurableListableBeanFactory for DefaultListableBeanFactory {
         *self.configuration_frozen.read()
     }
 
-    fn destroy_singletons(&self) -> ContainerResult<()> {
+    fn destroy_singletons(&self) -> Result<()> {
         tracing::info!("Destroying singleton beans");
 
         // 获取所有定义的克隆，避免长时间持锁

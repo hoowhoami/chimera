@@ -125,14 +125,14 @@ pub(crate) fn bean_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
             fn #register_fn_name(
                 context: &std::sync::Arc<chimera_core::ApplicationContext>,
                 config_instance: std::sync::Arc<dyn std::any::Any + Send + Sync>,
-            ) -> chimera_core::ContainerResult<()> {
+            ) -> chimera_core::Result<()> {
                 use chimera_core::Container;
 
                 // 创建工厂函数，捕获配置实例
                 let ctx = std::sync::Arc::clone(context);
                 let config = config_instance.clone();
 
-                let factory = move || -> chimera_core::ContainerResult<Box<dyn std::any::Any + Send + Sync>> {
+                let factory = move || -> chimera_core::Result<Box<dyn std::any::Any + Send + Sync>> {
                     // downcast 到具体的配置类型
                     // 注意：这里我们使用动态类型，因为在编译时无法确定具体类型
                     // 配置类会在运行时传入
@@ -184,7 +184,7 @@ fn extract_scope_from_attributes(attrs: &[Attribute]) -> String {
 fn extract_result_type(ty: &Type) -> Option<&Type> {
     if let Type::Path(type_path) = ty {
         if let Some(segment) = type_path.path.segments.last() {
-            if segment.ident == "Result" || segment.ident == "ContainerResult" {
+            if segment.ident == "Result" || segment.ident == "Result" {
                 if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                     if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
                         return Some(inner_ty);

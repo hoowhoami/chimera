@@ -160,12 +160,12 @@ pub fn lazy(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// }
 ///
 /// impl MyService {
-///     pub fn init(&mut self) -> ContainerResult<()> {
+///     pub fn init(&mut self) -> Result<()> {
 ///         // 初始化逻辑
 ///         Ok(())
 ///     }
 ///
-///     pub fn custom_init(&mut self) -> ContainerResult<()> {
+///     pub fn custom_init(&mut self) -> Result<()> {
 ///         // 自定义初始化逻辑
 ///         Ok(())
 ///     }
@@ -212,12 +212,12 @@ pub fn init(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// }
 ///
 /// impl MyService {
-///     pub fn destroy(&mut self) -> ContainerResult<()> {
+///     pub fn destroy(&mut self) -> Result<()> {
 ///         // 清理逻辑
 ///         Ok(())
 ///     }
 ///
-///     pub fn cleanup(&mut self) -> ContainerResult<()> {
+///     pub fn cleanup(&mut self) -> Result<()> {
 ///         // 自定义清理逻辑
 ///         Ok(())
 ///     }
@@ -294,13 +294,13 @@ pub fn configuration(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// impl AppConfig {
 ///     #[bean]
-///     pub fn database_service(&self) -> ContainerResult<DatabaseService> {
+///     pub fn database_service(&self) -> Result<DatabaseService> {
 ///         DatabaseService::new(&self.environment.get_string("db.url").unwrap())
 ///     }
 ///
 ///     #[bean("cacheService")]
 ///     #[scope("prototype")]
-///     pub fn cache(&self) -> ContainerResult<CacheService> {
+///     pub fn cache(&self) -> Result<CacheService> {
 ///         CacheService::new()
 ///     }
 /// }
@@ -346,7 +346,7 @@ pub fn derive_configuration_properties(input: TokenStream) -> TokenStream {
 /// pub struct CustomBeanFactoryPostProcessor;
 ///
 /// impl BeanFactoryPostProcessor for CustomBeanFactoryPostProcessor {
-///     fn post_process_bean_factory(&self, context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+///     fn post_process_bean_factory(&self, context: &Arc<ApplicationContext>) -> Result<()> {
 ///         tracing::info!("Processing bean factory");
 ///         Ok(())
 ///     }
@@ -383,7 +383,7 @@ pub fn derive_bean_factory_post_processor(input: TokenStream) -> TokenStream {
 ///         &self,
 ///         bean: Arc<dyn Any + Send + Sync>,
 ///         bean_name: &str
-///     ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+///     ) -> Result<Arc<dyn Any + Send + Sync>> {
 ///         tracing::info!("Bean initialized: {}", bean_name);
 ///         Ok(bean)
 ///     }
@@ -414,7 +414,7 @@ pub fn derive_bean_post_processor(input: TokenStream) -> TokenStream {
 /// }
 ///
 /// impl SmartInitializingSingleton for StartupService {
-///     fn after_singletons_instantiated(&self) -> ContainerResult<()> {
+///     fn after_singletons_instantiated(&self) -> Result<()> {
 ///         tracing::info!("All singletons initialized!");
 ///         Ok(())
 ///     }

@@ -70,7 +70,7 @@ impl AppConfig {
 
 // 3. 启动应用
 #[tokio::main]
-async fn main() -> ApplicationResult<()> {
+async fn main() -> Result<()> {
     ChimeraApplication::new()
         .run()
         .await
@@ -281,13 +281,13 @@ impl AppConfig {
 
 impl DatabasePool {
     // #[init] 会自动调用此方法
-    pub fn init(&mut self) -> ContainerResult<()> {
+    pub fn init(&mut self) -> Result<()> {
         tracing::info!("Initializing connection pool");
         Ok(())
     }
 
     // #[destroy] 会在应用关闭时调用
-    pub fn destroy(&mut self) -> ContainerResult<()> {
+    pub fn destroy(&mut self) -> Result<()> {
         tracing::info!("Closing connection pool");
         Ok(())
     }
@@ -312,9 +312,9 @@ impl CacheManager {
 
 Init 和 Destroy 方法支持两种返回类型，可根据实际需求选择：
 
-1. **`ContainerResult<()>`** - 可以返回错误，框架会传播错误并停止初始化
+1. **`Result<()>`** - 可以返回错误，框架会传播错误并停止初始化
    ```rust
-   pub fn init(&mut self) -> ContainerResult<()> {
+   pub fn init(&mut self) -> Result<()> {
        // 可能失败的初始化操作
        let connection = establish_connection()?;
        Ok(())
@@ -458,7 +458,7 @@ impl AppConfig {
     ///
     /// - 方法名作为 bean 名称（email_service）
     /// - 返回值类型作为 bean 类型
-    /// - 可以返回 T 或 ContainerResult<T>
+    /// - 可以返回 T 或 Result<T>
     #[bean]
     pub fn email_service(&self) -> EmailService {
         let host = self.environment
@@ -475,17 +475,17 @@ impl AppConfig {
 
     /// 返回 Result 类型，框架会自动处理错误
     #[bean]
-    pub fn database_service(&self) -> ContainerResult<DatabaseService> {
+    pub fn database_service(&self) -> Result<DatabaseService> {
         let url = self.environment
             .get_string("db.url")
-            .ok_or_else(|| ContainerError::Other(anyhow::anyhow!("db.url not found")))?;
+            .ok_or_else(|| anyhow::anyhow!("db.url not found"))?;
         DatabaseService::connect(&url)
     }
 
     /// Bean 之间的依赖注入
     /// 通过 ApplicationContext 获取其他 Bean
     #[bean]
-    pub fn notification_service(&self) -> ContainerResult<NotificationService> {
+    pub fn notification_service(&self) -> Result<NotificationService> {
         Ok(NotificationService::new(
             self.context.get_bean_by_type::<EmailService>()?,
             self.context.get_bean_by_type::<SmsService>()?,
@@ -544,24 +544,24 @@ impl AppConfig {
 
 // 生命周期方法实现
 impl ConnectionPool {
-    pub fn init(&mut self) -> ContainerResult<()> {
+    pub fn init(&mut self) -> Result<()> {
         tracing::info!("Initializing connection pool");
         Ok(())
     }
 
-    pub fn destroy(&mut self) -> ContainerResult<()> {
+    pub fn destroy(&mut self) -> Result<()> {
         tracing::info!("Closing connection pool");
         Ok(())
     }
 }
 
 impl CacheManager {
-    pub fn startup(&mut self) -> ContainerResult<()> {
+    pub fn startup(&mut self) -> Result<()> {
         tracing::info!("Starting cache");
         Ok(())
     }
 
-    pub fn cleanup(&mut self) -> ContainerResult<()> {
+    pub fn cleanup(&mut self) -> Result<()> {
         tracing::info!("Cleaning up cache");
         Ok(())
     }

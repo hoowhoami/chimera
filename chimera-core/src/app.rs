@@ -1,9 +1,9 @@
-use crate::{ApplicationContext, ApplicationResult};
+use crate::{ApplicationContext, Result};
 use crate::config::{TomlPropertySource, EnvironmentPropertySource};
 use crate::event::ApplicationStartedEvent;
 use crate::logging::LoggingConfig;
-use crate::error::ContainerResult;
 use crate::plugin::{PluginRegistry, load_plugins};
+use anyhow::Context;
 use std::sync::Arc;
 use std::path::Path;
 
@@ -26,7 +26,7 @@ impl RunningApplication {
     }
 
     /// 手动触发关闭
-    pub fn shutdown(self) -> ApplicationResult<()> {
+    pub fn shutdown(self) -> Result<()> {
         self.context.shutdown().map_err(|e| e.into())
     }
 }
@@ -57,10 +57,10 @@ pub struct ChimeraApplication {
     logging_config: Option<LoggingConfig>,
 
     /// 自定义初始化函数
-    initializers: Vec<Box<dyn Fn(&Arc<ApplicationContext>) -> ApplicationResult<()> + Send + Sync>>,
+    initializers: Vec<Box<dyn Fn(&Arc<ApplicationContext>) -> Result<()> + Send + Sync>>,
 
     /// 自定义 shutdown hooks
-    shutdown_hooks: Vec<Box<dyn Fn() -> ContainerResult<()> + Send + Sync>>,
+    shutdown_hooks: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
 
     /// 插件注册表
     plugin_registry: PluginRegistry,
@@ -118,7 +118,7 @@ impl ChimeraApplication {
     /// 添加初始化器
     pub fn initializer<F>(mut self, f: F) -> Self
     where
-        F: Fn(&Arc<ApplicationContext>) -> ApplicationResult<()> + Send + Sync + 'static,
+        F: Fn(&Arc<ApplicationContext>) -> Result<()> + Send + Sync + 'static,
     {
         self.initializers.push(Box::new(f));
         self
@@ -129,14 +129,14 @@ impl ChimeraApplication {
     /// Shutdown hook 会在应用关闭时按注册顺序执行
     pub fn shutdown_hook<F>(mut self, hook: F) -> Self
     where
-        F: Fn() -> ContainerResult<()> + Send + Sync + 'static,
+        F: Fn() -> Result<()> + Send + Sync + 'static,
     {
         self.shutdown_hooks.push(Box::new(hook));
         self
     }
 
     /// 运行应用
-    pub async fn run(self) -> ApplicationResult<RunningApplication> {
+    pub async fn run(self) -> Result<RunningApplication> {
         use crate::constants::*;
 
         // 初始化日志系统
@@ -163,7 +163,7 @@ impl ChimeraApplication {
                 tracing::debug!("Loading base configuration from: {}", config_path.display());
                 temp_builder = temp_builder.add_property_source(Box::new(
                     TomlPropertySource::from_file(&config_path)
-                        .map_err(|e| crate::error::ApplicationError::ConfigLoadFailed(e.to_string()))?,
+                        .context(format!("Failed to load configuration from: {}", config_path.display()))?,
                 ));
                 break;
             }
@@ -380,7 +380,7 @@ impl ChimeraApplication {
         &self,
         builder: &mut crate::context::ApplicationContextBuilder,
         active_profiles: &[String],
-    ) -> ApplicationResult<()> {
+    ) -> Result<()> {
         // 确定要使用的配置文件列表
         let config_files = if self.config_files.is_empty() {
             // 用户未指定配置文件，使用默认查找规则
@@ -451,7 +451,7 @@ impl ChimeraApplication {
         builder: &mut crate::context::ApplicationContextBuilder,
         config_file: &str,
         priority: i32,
-    ) -> ApplicationResult<()> {
+    ) -> Result<()> {
         if Path::new(config_file).exists() {
             match TomlPropertySource::from_file(config_file) {
                 Ok(source) => {

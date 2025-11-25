@@ -89,8 +89,8 @@ impl DatabaseConnectionPool {
     }
 
     /// 初始化方法 - 打开连接池
-    /// 返回 ContainerResult<()>
-    pub fn init(&mut self) -> ContainerResult<()> {
+    /// 返回 Result<()>
+    pub fn init(&mut self) -> Result<()> {
         tracing::info!("🔌 Initializing database connection pool with size {}", self.pool_size);
         self.active_connections = self.pool_size;
         tracing::info!("✅ Connection pool initialized, {} connections active", self.active_connections);
@@ -98,8 +98,8 @@ impl DatabaseConnectionPool {
     }
 
     /// 销毁方法 - 关闭连接池
-    /// 返回 ContainerResult<()>
-    pub fn destroy(&mut self) -> ContainerResult<()> {
+    /// 返回 Result<()>
+    pub fn destroy(&mut self) -> Result<()> {
         tracing::info!("🔌 Closing database connection pool");
         tracing::info!("📊 Active connections: {}", self.active_connections);
         self.active_connections = 0;
@@ -215,7 +215,7 @@ impl BeanConfig {
     ///
     /// 返回 Result 类型，框架会自动处理错误传播
     #[bean]
-    pub fn notification_service(&self) -> ContainerResult<NotificationService> {
+    pub fn notification_service(&self) -> Result<NotificationService> {
         tracing::info!("📦 Creating NotificationService bean");
         Ok(NotificationService::new(
             self.context.get_bean_by_type::<EmailService>()?,

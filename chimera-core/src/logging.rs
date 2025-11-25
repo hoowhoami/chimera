@@ -1,4 +1,4 @@
-use crate::ApplicationResult;
+use crate::Result;
 use std::str::FromStr;
 use tracing::Level;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -170,7 +170,7 @@ impl LoggingConfig {
     }
 
     /// 初始化日志系统
-    pub fn init(self) -> ApplicationResult<()> {
+    pub fn init(self) -> Result<()> {
         // 构建环境过滤器
         let env_filter = if let Some(filter) = &self.filter {
             EnvFilter::try_new(filter)
@@ -191,7 +191,7 @@ impl LoggingConfig {
                     .with_thread_ids(self.show_thread_ids)
                     .with_thread_names(self.show_thread_names)
                     .try_init()
-                    .map_err(|e| crate::ApplicationError::LoggingInitFailed(e.to_string()))?;
+                    .map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
             }
             LogFormat::Full => {
                 fmt()
@@ -200,7 +200,7 @@ impl LoggingConfig {
                     .with_thread_ids(self.show_thread_ids)
                     .with_thread_names(self.show_thread_names)
                     .try_init()
-                    .map_err(|e| crate::ApplicationError::LoggingInitFailed(e.to_string()))?;
+                    .map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
             }
             LogFormat::Json => {
                 fmt()
@@ -208,7 +208,7 @@ impl LoggingConfig {
                     .json()
                     .with_target(self.show_target)
                     .try_init()
-                    .map_err(|e| crate::ApplicationError::LoggingInitFailed(e.to_string()))?;
+                    .map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
             }
             LogFormat::Pretty => {
                 fmt()
@@ -216,7 +216,7 @@ impl LoggingConfig {
                     .pretty()
                     .with_target(self.show_target)
                     .try_init()
-                    .map_err(|e| crate::ApplicationError::LoggingInitFailed(e.to_string()))?;
+                    .map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
             }
         }
 

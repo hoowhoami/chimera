@@ -22,19 +22,19 @@ pub mod scope;
 pub mod utils;
 
 // Helper trait for init/destroy callbacks
-// Allows both () and ContainerResult<()> return types
-pub trait IntoContainerResult {
-    fn into_container_result(self) -> ContainerResult<()>;
+// Allows both () and Result<()> return types
+pub trait IntoResult {
+    fn into_result(self) -> Result<()>;
 }
 
-impl IntoContainerResult for () {
-    fn into_container_result(self) -> ContainerResult<()> {
+impl IntoResult for () {
+    fn into_result(self) -> Result<()> {
         Ok(())
     }
 }
 
-impl IntoContainerResult for ContainerResult<()> {
-    fn into_container_result(self) -> ContainerResult<()> {
+impl IntoResult for Result<()> {
+    fn into_result(self) -> Result<()> {
         self
     }
 }
@@ -54,7 +54,7 @@ pub use config::{
 };
 pub use constants::*;
 pub use context::{ApplicationContext, ApplicationContextBuilder, Container, ShutdownHook};
-pub use error::{ApplicationError, ApplicationResult, ContainerError, ContainerResult};
+pub use error::Result;
 pub use event::{
     ApplicationEventMulticaster, ApplicationEventPublisher, ApplicationShutdownEvent,
     ApplicationStartedEvent, ErrorHandler, Event, EventListener,
@@ -88,7 +88,7 @@ pub mod prelude {
         PropertySource, TomlPropertySource,
     };
     pub use crate::context::{ApplicationContext, Container};
-    pub use crate::error::{ApplicationError, ApplicationResult, ContainerError, ContainerResult};
+    pub use crate::error::Result;
     pub use crate::event::{
         ApplicationEventMulticaster, ApplicationEventPublisher, ApplicationShutdownEvent,
         ApplicationStartedEvent, Event, EventListener, SimpleApplicationEventMulticaster,
@@ -102,4 +102,6 @@ pub mod prelude {
     pub use crate::plugin::{ApplicationPlugin, PluginRegistry, load_plugins};
     pub use crate::scope::Scope;
     pub use crate::utils;
+    // Re-export anyhow for convenience
+    pub use anyhow::{anyhow, Context};
 }

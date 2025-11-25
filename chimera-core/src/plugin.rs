@@ -22,21 +22,21 @@ pub trait ApplicationPlugin: Send + Sync {
     /// 配置阶段 - 在组件扫描之前执行
     ///
     /// 用于注册额外的 Bean、配置源等
-    fn configure(&self, _context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
+    fn configure(&self, _context: &Arc<ApplicationContext>) -> Result<()> {
         Ok(())
     }
 
     /// 启动阶段 - 在应用完全初始化后执行
     ///
     /// 用于启动额外的服务，如 Web 服务器
-    async fn on_startup(&self, _context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
+    async fn on_startup(&self, _context: &Arc<ApplicationContext>) -> Result<()> {
         Ok(())
     }
 
     /// 关闭阶段 - 在应用关闭时执行
     ///
     /// 用于清理资源
-    async fn on_shutdown(&self, _context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
+    async fn on_shutdown(&self, _context: &Arc<ApplicationContext>) -> Result<()> {
         Ok(())
     }
 
@@ -79,7 +79,7 @@ impl PluginRegistry {
     }
 
     /// 执行配置阶段
-    pub fn configure_all(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
+    pub fn configure_all(&self, context: &Arc<ApplicationContext>) -> Result<()> {
         for plugin in &self.plugins {
             tracing::info!("Configuring plugin: {}", plugin.name());
             plugin.configure(context)?;
@@ -88,7 +88,7 @@ impl PluginRegistry {
     }
 
     /// 执行启动阶段
-    pub async fn startup_all(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
+    pub async fn startup_all(&self, context: &Arc<ApplicationContext>) -> Result<()> {
         for plugin in &self.plugins {
             tracing::info!("Starting plugin: {}", plugin.name());
             plugin.on_startup(context).await?;
@@ -97,7 +97,7 @@ impl PluginRegistry {
     }
 
     /// 执行关闭阶段
-    pub async fn shutdown_all(&self, context: &Arc<ApplicationContext>) -> ApplicationResult<()> {
+    pub async fn shutdown_all(&self, context: &Arc<ApplicationContext>) -> Result<()> {
         // 逆序关闭
         for plugin in self.plugins.iter().rev() {
             tracing::info!("Shutting down plugin: {}", plugin.name());

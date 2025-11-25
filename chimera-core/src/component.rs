@@ -1,9 +1,9 @@
-use crate::{ApplicationContext, ContainerResult, Scope, Container};
+use crate::{ApplicationContext, Result, Scope, Container};
 use crate::event::EventListener;
 use std::sync::Arc;
 
 /// Component注册函数类型
-pub type ComponentRegistrar = fn(&Arc<ApplicationContext>) -> ContainerResult<()>;
+pub type ComponentRegistrar = fn(&Arc<ApplicationContext>) -> Result<()>;
 
 /// Component注册表 - 用于inventory收集
 pub struct ComponentRegistry {
@@ -14,7 +14,7 @@ pub struct ComponentRegistry {
 inventory::collect!(ComponentRegistry);
 
 /// ConfigurationProperties注册函数类型
-pub type ConfigurationPropertiesRegistrar = fn(&Arc<ApplicationContext>) -> ContainerResult<()>;
+pub type ConfigurationPropertiesRegistrar = fn(&Arc<ApplicationContext>) -> Result<()>;
 
 /// ConfigurationProperties注册表 - 用于inventory收集
 pub struct ConfigurationPropertiesRegistry {
@@ -25,7 +25,7 @@ pub struct ConfigurationPropertiesRegistry {
 inventory::collect!(ConfigurationPropertiesRegistry);
 
 /// EventListener注册函数类型
-pub type EventListenerRegistrar = fn(&Arc<ApplicationContext>) -> ContainerResult<Arc<dyn EventListener>>;
+pub type EventListenerRegistrar = fn(&Arc<ApplicationContext>) -> Result<Arc<dyn EventListener>>;
 
 /// EventListener注册表 - 用于inventory收集
 pub struct EventListenerRegistry {
@@ -76,14 +76,14 @@ pub trait Component: Sized + Send + Sync + 'static {
     /// 初始化回调（类似 @PostConstruct）
     ///
     /// 返回 None 表示没有初始化逻辑
-    fn init_callback() -> Option<fn(&mut Self) -> ContainerResult<()>> {
+    fn init_callback() -> Option<fn(&mut Self) -> Result<()>> {
         None
     }
 
     /// 销毁回调（类似 @PreDestroy）
     ///
     /// 返回 None 表示没有清理逻辑
-    fn destroy_callback() -> Option<fn(&mut Self) -> ContainerResult<()>> {
+    fn destroy_callback() -> Option<fn(&mut Self) -> Result<()>> {
         None
     }
 
@@ -101,10 +101,10 @@ pub trait Component: Sized + Send + Sync + 'static {
 
     /// 从容器创建实例
     /// 自动注入依赖
-    fn create_from_context(context: &Arc<ApplicationContext>) -> ContainerResult<Self>;
+    fn create_from_context(context: &Arc<ApplicationContext>) -> Result<Self>;
 
     /// 注册到容器
-    fn register(context: &Arc<ApplicationContext>) -> ContainerResult<()> {
+    fn register(context: &Arc<ApplicationContext>) -> Result<()> {
         let ctx = Arc::clone(context);
         let scope = Self::scope();
         let lazy = Self::lazy();
@@ -126,7 +126,7 @@ pub trait Component: Sized + Send + Sync + 'static {
                 if let Some(typed_bean) = bean.downcast_mut::<Self>() {
                     init_fn(typed_bean)
                 } else {
-                    Err(crate::ContainerError::BeanCreationFailed(
+                    Err(anyhow::anyhow!(
                         "Failed to downcast bean in init callback".to_string()
                     ))
                 }
@@ -139,7 +139,7 @@ pub trait Component: Sized + Send + Sync + 'static {
                 if let Some(typed_bean) = bean.downcast_mut::<Self>() {
                     destroy_fn(typed_bean)
                 } else {
-                    Err(crate::ContainerError::BeanCreationFailed(
+                    Err(anyhow::anyhow!(
                         "Failed to downcast bean in destroy callback".to_string()
                     ))
                 }
@@ -155,7 +155,7 @@ impl ApplicationContext {
     /// 自动扫描并注册所有Component
     ///
     /// 这会自动注册所有使用#[derive(Component)]标记的类型
-    pub fn scan_components(self: &Arc<Self>) -> ContainerResult<()> {
+    pub fn scan_components(self: &Arc<Self>) -> Result<()> {
         tracing::info!("Starting component scan for @Component annotated beans");
 
         let components: Vec<_> = inventory::iter::<ComponentRegistry>().collect();
@@ -189,7 +189,7 @@ impl ApplicationContext {
     /// 自动扫描并注册所有ConfigurationProperties
     ///
     /// 这会自动绑定所有使用#[derive(ConfigurationProperties)]标记的类型
-    pub fn scan_configuration_properties(self: &Arc<Self>) -> ContainerResult<()> {
+    pub fn scan_configuration_properties(self: &Arc<Self>) -> Result<()> {
         tracing::info!("Starting configuration properties scan for @ConfigurationProperties annotated beans");
 
         let config_props: Vec<_> = inventory::iter::<ConfigurationPropertiesRegistry>().collect();
@@ -223,7 +223,7 @@ impl ApplicationContext {
     /// 自动扫描并注册EventListener
     ///
     /// 在Bean初始化后调用，自动注册所有实现了EventListener的Component
-    pub fn scan_event_listeners(self: &Arc<Self>) -> ContainerResult<()> {
+    pub fn scan_event_listeners(self: &Arc<Self>) -> Result<()> {
         tracing::info!("Starting event listener scan for @Component beans implementing EventListener");
 
         let listeners: Vec<_> = inventory::iter::<EventListenerRegistry>().collect();
@@ -259,7 +259,7 @@ impl ApplicationContext {
     /// 自动扫描并注册所有 #[bean] 标记的工厂方法
     ///
     /// 这会处理所有使用 #[bean] 标记的配置方法
-    pub fn scan_bean_methods(self: &Arc<Self>) -> ContainerResult<()> {
+    pub fn scan_bean_methods(self: &Arc<Self>) -> Result<()> {
         tracing::info!("Starting bean method scan for @Bean annotated methods");
 
         let bean_methods: Vec<_> = inventory::iter::<crate::bean::BeanMethodRegistry>().collect();
@@ -302,7 +302,7 @@ impl ApplicationContext {
                     self.get_bean(&camel_name)
                 })
                 .map_err(|e| {
-                    crate::ContainerError::BeanCreationFailed(
+                    anyhow::anyhow!(
                         format!(
                             "Failed to get config instance for '{}': {}. \
                             Make sure the config class is annotated with #[derive(Component)]",

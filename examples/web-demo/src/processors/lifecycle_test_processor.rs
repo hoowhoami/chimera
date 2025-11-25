@@ -29,7 +29,7 @@ impl BeanPostProcessor for LifecycleTestProcessor {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         tracing::info!("🔵 [Lifecycle] postProcessBeforeInitialization: {}", bean_name);
         Ok(bean)
     }
@@ -38,7 +38,7 @@ impl BeanPostProcessor for LifecycleTestProcessor {
         &self,
         bean: Arc<dyn Any + Send + Sync>,
         bean_name: &str,
-    ) -> ContainerResult<Arc<dyn Any + Send + Sync>> {
+    ) -> Result<Arc<dyn Any + Send + Sync>> {
         tracing::info!("🟢 [Lifecycle] postProcessAfterInitialization: {}", bean_name);
         Ok(bean)
     }
