@@ -89,6 +89,7 @@ impl DatabaseConnectionPool {
     }
 
     /// 初始化方法 - 打开连接池
+    /// 返回 ContainerResult<()>
     pub fn init(&mut self) -> ContainerResult<()> {
         tracing::info!("🔌 Initializing database connection pool with size {}", self.pool_size);
         self.active_connections = self.pool_size;
@@ -97,6 +98,7 @@ impl DatabaseConnectionPool {
     }
 
     /// 销毁方法 - 关闭连接池
+    /// 返回 ContainerResult<()>
     pub fn destroy(&mut self) -> ContainerResult<()> {
         tracing::info!("🔌 Closing database connection pool");
         tracing::info!("📊 Active connections: {}", self.active_connections);
@@ -107,6 +109,7 @@ impl DatabaseConnectionPool {
 }
 
 /// 缓存服务 - 展示自定义生命周期方法名
+/// 注意：这个版本的 init/destroy 方法返回 () 而不是 Result
 #[derive(Debug)]
 pub struct CacheManager {
     cache_name: String,
@@ -122,20 +125,20 @@ impl CacheManager {
     }
 
     /// 自定义初始化方法
-    pub fn startup(&mut self) -> ContainerResult<()> {
+    /// 返回 () - 框架会自动包装成 Ok(())，无需手动处理错误
+    pub fn startup(&mut self) {
         tracing::info!("💾 Starting cache manager: {}", self.cache_name);
         self.entries = 100; // 预加载缓存
         tracing::info!("✅ Cache manager started with {} entries", self.entries);
-        Ok(())
     }
 
     /// 自定义销毁方法
-    pub fn cleanup(&mut self) -> ContainerResult<()> {
+    /// 返回 () - 框架会自动包装成 Ok(())
+    pub fn cleanup(&mut self) {
         tracing::info!("💾 Cleaning up cache manager: {}", self.cache_name);
         tracing::info!("📊 Total entries: {}", self.entries);
         self.entries = 0;
         tracing::info!("✅ Cache manager cleaned up");
-        Ok(())
     }
 }
 
@@ -213,12 +216,7 @@ impl BeanConfig {
     /// 返回 Result 类型，框架会自动处理错误传播
     #[bean]
     pub fn notification_service(&self) -> ContainerResult<NotificationService> {
-        self.context.get_bean_by_type::<AppConfig>().map(|app_config| {
-            tracing::info!(
-                "📦 Creating NotificationService bean with app name: {}",
-                app_config.name
-            );
-        });
+        tracing::info!("📦 Creating NotificationService bean");
         Ok(NotificationService::new(
             self.context.get_bean_by_type::<EmailService>()?,
             self.context.get_bean_by_type::<SmsService>()?,

@@ -21,6 +21,24 @@ pub mod plugin;
 pub mod scope;
 pub mod utils;
 
+// Helper trait for init/destroy callbacks
+// Allows both () and ContainerResult<()> return types
+pub trait IntoContainerResult {
+    fn into_container_result(self) -> ContainerResult<()>;
+}
+
+impl IntoContainerResult for () {
+    fn into_container_result(self) -> ContainerResult<()> {
+        Ok(())
+    }
+}
+
+impl IntoContainerResult for ContainerResult<()> {
+    fn into_container_result(self) -> ContainerResult<()> {
+        self
+    }
+}
+
 // 重新导出常用类型
 pub use app::{ChimeraApplication, RunningApplication};
 pub use bean::{Bean, BeanDefinition, FactoryBean};

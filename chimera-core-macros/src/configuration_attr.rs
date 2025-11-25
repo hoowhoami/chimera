@@ -76,7 +76,9 @@ pub(crate) fn configuration_impl(attr: TokenStream, item: TokenStream) -> TokenS
             quote! {
                 let definition = definition.with_init(|bean: &mut dyn std::any::Any| -> chimera_core::ContainerResult<()> {
                     if let Some(instance) = bean.downcast_mut::<#return_type>() {
-                        instance.#init_ident()?;
+                        // 使用 IntoContainerResult trait 支持返回 () 或 ContainerResult<()>
+                        use chimera_core::IntoContainerResult;
+                        instance.#init_ident().into_container_result()?;
                     }
                     Ok(())
                 });
@@ -91,7 +93,9 @@ pub(crate) fn configuration_impl(attr: TokenStream, item: TokenStream) -> TokenS
             quote! {
                 let definition = definition.with_destroy(|bean: &mut dyn std::any::Any| -> chimera_core::ContainerResult<()> {
                     if let Some(instance) = bean.downcast_mut::<#return_type>() {
-                        instance.#destroy_ident()?;
+                        // 使用 IntoContainerResult trait 支持返回 () 或 ContainerResult<()>
+                        use chimera_core::IntoContainerResult;
+                        instance.#destroy_ident().into_container_result()?;
                     }
                     Ok(())
                 });

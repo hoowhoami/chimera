@@ -298,18 +298,41 @@ impl DatabasePool {
 
 impl CacheManager {
     // #[init("startup")] 会调用此方法
-    pub fn startup(&mut self) -> ContainerResult<()> {
+    // 返回 () - 框架会自动包装成 Ok(())
+    pub fn startup(&mut self) {
         tracing::info!("Starting cache");
-        Ok(())
     }
 
     // #[destroy("cleanup")] 会调用此方法
-    pub fn cleanup(&mut self) -> ContainerResult<()> {
+    // 返回 () - 框架会自动包装成 Ok(())
+    pub fn cleanup(&mut self) {
         tracing::info!("Cleaning up cache");
-        Ok(())
     }
 }
 ```
+
+**生命周期方法返回类型**：
+
+Init 和 Destroy 方法支持两种返回类型，可根据实际需求选择：
+
+1. **`ContainerResult<()>`** - 可以返回错误，框架会传播错误并停止初始化
+   ```rust
+   pub fn init(&mut self) -> ContainerResult<()> {
+       // 可能失败的初始化操作
+       let connection = establish_connection()?;
+       Ok(())
+   }
+   ```
+
+2. **`()`** - 简单场景无需错误处理，框架自动包装成 `Ok(())`
+   ```rust
+   pub fn startup(&mut self) {
+       // 简单的初始化操作，不会失败
+       self.count = 100;
+   }
+   ```
+
+两种方式可以混用，同一个应用中不同的 Bean 可以使用不同的返回类型。
 
 ### 模板引擎
 
