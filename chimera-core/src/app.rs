@@ -264,6 +264,10 @@ impl ChimeraApplication {
         tracing::info!("Scanning for @Component annotated beans");
         context.scan_components()?;
 
+        // 自动扫描并注册 @Bean 方法（需要在组件扫描之后，因为配置类本身是 Component）
+        tracing::info!("Scanning for @Bean annotated methods");
+        context.scan_bean_methods()?;
+
         // 自动扫描并注册 BeanFactoryPostProcessor（在 Bean 实例化之前）
         tracing::info!("Scanning for @BeanFactoryPostProcessor annotated processors");
         context.scan_bean_factory_post_processors();
@@ -284,7 +288,8 @@ impl ChimeraApplication {
         tracing::info!("Validating bean dependencies");
         context.validate_dependencies()?;
 
-        // 初始化所有非延迟加载的单例 Bean（包括刚扫描到的 Component）
+        // 初始化所有非延迟加载的单例 Bean
+        // 使用拓扑排序自动确定正确的初始化顺序（依赖的 bean 会先于依赖它的 bean 初始化）
         tracing::info!("Initializing non-lazy singleton beans");
         context.initialize()?;
         tracing::info!("ApplicationContext initialized");

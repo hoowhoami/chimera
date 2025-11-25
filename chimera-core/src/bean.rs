@@ -1,6 +1,7 @@
 use std::any::{Any, TypeId};
 use std::fmt;
-use crate::{ContainerResult, Scope};
+use std::sync::Arc;
+use crate::{ApplicationContext, ContainerResult, Scope};
 
 /// Bean trait - 所有可以被容器管理的类型都需要实现此 trait
 pub trait Bean: Any + Send + Sync {
@@ -162,3 +163,22 @@ where
         std::any::type_name::<T>()
     }
 }
+
+/// Bean方法注册函数类型
+///
+/// 用于注册 #[bean] 标记的工厂方法
+pub type BeanMethodRegistrar = fn(
+    &Arc<ApplicationContext>,
+    Arc<dyn Any + Send + Sync>,
+) -> ContainerResult<()>;
+
+/// Bean方法注册表
+///
+/// 用于 inventory 收集 #[bean] 标记的方法
+pub struct BeanMethodRegistry {
+    pub registrar: BeanMethodRegistrar,
+    pub bean_name: &'static str,
+    pub config_type_name: &'static str,
+}
+
+inventory::collect!(BeanMethodRegistry);

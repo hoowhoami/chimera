@@ -66,7 +66,7 @@ struct RedisConfig {
 // ==================== 服务层 ====================
 
 #[derive(Component)]
-#[bean("systemService")]
+#[component("systemService")]
 struct SystemService {
     #[autowired]
     context: Arc<ApplicationContext>,
@@ -174,7 +174,7 @@ impl Event for SystemHealthCheckEvent {
 }
 
 #[derive(Component, Debug, Clone)]
-#[bean("cacheService")]
+#[component("cacheService")]
 struct CacheService {
     #[autowired]
     redis_config: Arc<RedisConfig>,
@@ -200,7 +200,7 @@ impl CacheService {
 }
 
 #[derive(Component, Debug)]
-#[bean("databaseService")]
+#[component("databaseService")]
 #[init]
 #[destroy]
 struct DatabaseService {
@@ -234,7 +234,7 @@ impl DatabaseService {
 
 #[derive(Component, Debug, Clone)]
 #[lazy]
-#[bean("userService")]
+#[component("userService")]
 struct UserService {
     #[autowired]
     database: Arc<DatabaseService>,
@@ -278,7 +278,7 @@ impl UserService {
 
 // 一个可选的服务，可能存在也可能不存在
 // #[derive(Component, Debug, Clone)]
-// #[bean("metricsService")]
+// #[component("metricsService")]
 struct MetricsService {}
 
 impl MetricsService {
@@ -289,7 +289,7 @@ impl MetricsService {
 
 // 使用可选依赖的服务
 #[derive(Component, Clone)]
-#[bean("orderService")]
+#[component("orderService")]
 struct OrderService {
     #[autowired]
     database: Arc<DatabaseService>,
@@ -322,7 +322,7 @@ impl OrderService {
 
 // 测试不存在的可选依赖
 #[derive(Component, Debug, Clone)]
-#[bean("paymentService")]
+#[component("paymentService")]
 struct PaymentService {
     // 这个服务不存在，用于测试可选依赖为 None 的情况
     #[autowired("nonExistentService")]

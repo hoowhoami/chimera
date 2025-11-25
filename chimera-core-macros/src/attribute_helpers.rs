@@ -1,12 +1,29 @@
 use syn::Attribute;
 use quote::quote;
 
-/// 从属性中提取bean名称
-pub(crate) fn get_bean_name(attrs: &[Attribute]) -> Option<String> {
+/// 从属性中提取 component 名称
+/// 支持格式:
+/// - #[component("beanName")]
+/// - #[component(name = "beanName")]
+pub(crate) fn get_component_name(attrs: &[Attribute]) -> Option<String> {
     for attr in attrs {
-        if attr.path().is_ident("bean") {
+        if attr.path().is_ident("component") {
+            // 尝试解析 #[component("beanName")] 格式
             if let Ok(name_lit) = attr.parse_args::<syn::LitStr>() {
                 return Some(name_lit.value());
+            }
+
+            // 尝试解析 #[component(name = "beanName")] 格式
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                if let Ok(nested) = meta_list.parse_args::<syn::MetaNameValue>() {
+                    if nested.path.is_ident("name") {
+                        if let syn::Expr::Lit(expr_lit) = &nested.value {
+                            if let syn::Lit::Str(lit_str) = &expr_lit.lit {
+                                return Some(lit_str.value());
+                            }
+                        }
+                    }
+                }
             }
         }
     }

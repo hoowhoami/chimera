@@ -520,6 +520,7 @@ impl ConfigurableBeanFactory for DefaultListableBeanFactory {
 
 impl ConfigurableListableBeanFactory for DefaultListableBeanFactory {
     fn preinstantiate_singletons(&self) -> ContainerResult<()> {
+        // 获取所有非延迟加载的单例 bean
         let bean_names: Vec<String> = {
             let definitions = self.definitions.read();
             definitions
@@ -531,7 +532,23 @@ impl ConfigurableListableBeanFactory for DefaultListableBeanFactory {
 
         tracing::debug!("Pre-instantiating {} singleton beans", bean_names.len());
 
-        for name in bean_names {
+        // 获取依赖图并进行拓扑排序
+        let dependency_map = self.get_bean_definitions();
+
+        // 只对需要初始化的 bean 进行拓扑排序
+        let filtered_deps: std::collections::HashMap<String, Vec<String>> = dependency_map
+            .into_iter()
+            .filter(|(name, _)| bean_names.contains(name))
+            .collect();
+
+        // 使用拓扑排序确定初始化顺序
+        let sorted_beans = crate::utils::dependency::topological_sort(&filtered_deps)
+            .map_err(|e| ContainerError::Other(anyhow::anyhow!("Failed to sort beans: {}", e)))?;
+
+        tracing::debug!("Initializing beans in dependency order: {:?}", sorted_beans);
+
+        // 按依赖顺序初始化 bean
+        for name in sorted_beans {
             tracing::debug!("Creating shared instance of singleton bean '{}'", name);
             self.get_bean(&name)?;
         }

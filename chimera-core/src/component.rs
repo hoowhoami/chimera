@@ -255,4 +255,85 @@ impl ApplicationContext {
         tracing::info!("Event listener scan completed, registered {} listener(s)", total);
         Ok(())
     }
+
+    /// 自动扫描并注册所有 #[bean] 标记的工厂方法
+    ///
+    /// 这会处理所有使用 #[bean] 标记的配置方法
+    pub fn scan_bean_methods(self: &Arc<Self>) -> ContainerResult<()> {
+        tracing::info!("Starting bean method scan for @Bean annotated methods");
+
+        let bean_methods: Vec<_> = inventory::iter::<crate::bean::BeanMethodRegistry>().collect();
+        let total = bean_methods.len();
+
+        if total == 0 {
+            tracing::debug!("No @Bean annotated methods found");
+            return Ok(());
+        }
+
+        tracing::info!("Found {} @Bean annotated method(s) to register", total);
+
+        // 按配置类分组，以便为每个配置类创建一次实例
+        use std::collections::HashMap;
+        let mut methods_by_config: HashMap<&str, Vec<_>> = HashMap::new();
+
+        for method in bean_methods.iter() {
+            methods_by_config
+                .entry(method.config_type_name)
+                .or_insert_with(Vec::new)
+                .push(method);
+        }
+
+        // 为每个配置类处理其所有 bean 方法
+        for (config_type, methods) in methods_by_config.iter() {
+            tracing::debug!(
+                "Processing {} bean method(s) from config class '{}'",
+                methods.len(),
+                config_type
+            );
+
+            // 尝试从容器获取配置类实例
+            // 配置类应该已经通过 #[derive(Component)] 注册
+            let config_instance = self.get_bean(config_type)
+                .or_else(|_| {
+                    // 如果按类型名获取失败，尝试按 camelCase 转换的名称获取
+                    let camel_name = crate::utils::naming::to_camel_case(
+                        config_type.split("::").last().unwrap_or(config_type)
+                    );
+                    self.get_bean(&camel_name)
+                })
+                .map_err(|e| {
+                    crate::ContainerError::BeanCreationFailed(
+                        format!(
+                            "Failed to get config instance for '{}': {}. \
+                            Make sure the config class is annotated with #[derive(Component)]",
+                            config_type, e
+                        )
+                    )
+                })?;
+
+            // 使用配置实例注册所有 bean 方法
+            for (idx, method) in methods.iter().enumerate() {
+                tracing::debug!(
+                    "Registering bean method [{}/{}]: '{}' from '{}'",
+                    idx + 1,
+                    methods.len(),
+                    method.bean_name,
+                    config_type
+                );
+
+                (method.registrar)(self, config_instance.clone()).map_err(|e| {
+                    tracing::error!(
+                        "Failed to register bean '{}' from '{}': {}",
+                        method.bean_name,
+                        config_type,
+                        e
+                    );
+                    e
+                })?;
+            }
+        }
+
+        tracing::info!("Bean method scan completed successfully, registered {} bean(s)", total);
+        Ok(())
+    }
 }

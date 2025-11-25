@@ -24,9 +24,68 @@ cargo run -p web-demo
 # 运行综合示例 - 展示依赖注入核心特性
 cargo run -p app-demo
 
+# 运行生命周期示例 - 展示 init/destroy 回调
+cargo run --package chimera-core --example lifecycle_demo
+
 # 测试环境变量覆盖
 CHIMERA_PROFILES_ACTIVE=prod cargo run -p app-demo
 ```
+
+### 最简示例
+
+```rust
+use chimera_core::prelude::*;
+use chimera_core_macros::{bean, component, configuration, Component, Configuration};
+use std::sync::Arc;
+
+// 1. 定义一个服务组件
+#[derive(Component)]
+#[bean("userService")]
+pub struct UserService {
+    #[autowired]
+    db: Arc<DatabaseService>,
+}
+
+#[component]
+impl UserService {
+    pub fn create_user(&self, name: &str) {
+        println!("Creating user: {}", name);
+    }
+}
+
+// 2. 定义配置类，创建第三方 Bean
+#[derive(Configuration)]
+pub struct AppConfig {
+    #[autowired]
+    environment: Arc<Environment>,
+}
+
+#[configuration]
+impl AppConfig {
+    #[bean]
+    pub fn database_service(&self) -> DatabaseService {
+        let url = self.environment
+            .get_string("db.url")
+            .unwrap_or_else(|| "localhost:5432".to_string());
+        DatabaseService::connect(&url)
+    }
+}
+
+// 3. 启动应用
+#[tokio::main]
+async fn main() -> ApplicationResult<()> {
+    ChimeraApplication::new()
+        .run()
+        .await
+}
+```
+
+框架会自动：
+1. 扫描并注册所有 `@Component` 和 `@Configuration`
+2. 解析依赖关系并按拓扑顺序初始化
+3. 检测循环依赖并在启动时报错
+4. 调用所有 `#[init]` 回调
+5. 应用关闭时调用所有 `#[destroy]` 回调
 
 ### 添加依赖
 
@@ -60,13 +119,14 @@ serde_json = "1"
 
 1. **定义配置** - 使用 `@ConfigurationProperties` 绑定配置，放在 `config/application.toml`
 2. **定义服务** - 使用 `@Component` 标记组件，`@autowired` 注入依赖
-3. **定义 impl 块** - 使用 `@component` 标记 Component 的 impl 块（必须）
-4. **启动应用** - 调用 `ChimeraApplication::new().run().await` 一行启动
-5. **使用服务** - 框架自动注册路由，或从 ApplicationContext 获取 Bean 并调用
+3. **定义 Bean** - 使用 `@Configuration` + `@Bean` 创建第三方类型的 Bean
+4. **定义 impl 块** - 使用 `@component` 或 `@configuration` 标记 impl 块（必须）
+5. **启动应用** - 调用 `ChimeraApplication::new().run().await` 一行启动
+6. **依赖自动处理** - 框架自动验证依赖、拓扑排序、初始化所有 Bean
 
 详细代码示例请参考：
 - `examples/app-demo` - 依赖注入、配置管理、事件系统示例
-- `examples/web-demo` - Web 框架、Controller、参数验证示例
+- `examples/web-demo` - Web 框架、Controller、参数验证、@Bean 方法示例
 
 ## 核心注解
 
@@ -142,11 +202,13 @@ impl ApiController {
 ### 依赖注入 (Dependency Injection)
 
 - **自动装配** - 通过 `@Component` 和 `@autowired` 注解实现类似 Spring 的自动依赖注入
+- **@Configuration + @Bean** - 类似 Spring Boot 的配置类和 Bean 工厂方法
 - **类型安全** - 基于 Rust 类型系统，编译时检查依赖关系
 - **可选依赖** - 支持 `Option<Arc<T>>` 实现可选依赖注入
 - **命名注入** - 支持通过 bean 名称进行精确注入
 - **线程安全** - 使用 `Arc` 和 `RwLock` 保证并发安全
 - **依赖验证** - 静态检测循环依赖和缺失依赖
+- **拓扑排序** - 自动按依赖关系顺序初始化 Bean，无需手动排序
 
 ### 配置管理
 
@@ -160,12 +222,94 @@ impl ApiController {
 
 ### Bean 作用域与生命周期
 
-- **Singleton** - 单例模式，容器中只维护一个实例
+支持完整的 Bean 生命周期管理，包括作用域、延迟加载和回调：
+
+- **Singleton** - 单例模式（默认），容器中只维护一个实例
 - **Prototype** - 原型模式，每次获取创建新实例
-- **Lazy** - 延迟初始化，按需创建 Bean
-- **@init** - Bean 初始化回调，类似 Spring 的 `@PostConstruct`
-- **@destroy** - Bean 销毁回调，类似 Spring 的 `@PreDestroy`
+- **Lazy** - 延迟初始化，首次使用时才创建 Bean
+- **Init 回调** - Bean 初始化回调，类似 Spring 的 `@PostConstruct`
+- **Destroy 回调** - Bean 销毁回调，类似 Spring 的 `@PreDestroy`
 - **Shutdown Hooks** - 应用优雅关闭钩子
+
+这些属性既可用于 `#[derive(Component)]` 组件，也可用于 `@Configuration` 中的 `@Bean` 方法：
+
+```rust
+use chimera_core::prelude::*;
+use chimera_core_macros::{bean, configuration, destroy, init, lazy, scope, Configuration};
+
+#[derive(Configuration)]
+pub struct AppConfig {
+    #[autowired]
+    environment: Arc<Environment>,
+}
+
+#[configuration]
+impl AppConfig {
+    /// 默认：单例模式
+    #[bean]
+    pub fn email_service(&self) -> EmailService {
+        EmailService::new()
+    }
+
+    /// 原型模式 - 每次获取创建新实例
+    #[bean("counter")]
+    #[scope("prototype")]
+    pub fn counter_service(&self) -> u32 {
+        0
+    }
+
+    /// 延迟初始化 - 首次使用时才创建
+    #[bean("heavyService")]
+    #[lazy]
+    pub fn heavy_service(&self) -> HeavyService {
+        HeavyService::new()
+    }
+
+    /// 带生命周期回调 - 使用默认方法名 init() 和 destroy()
+    #[bean("dbPool")]
+    #[init]
+    #[destroy]
+    pub fn database_pool(&self) -> DatabasePool {
+        DatabasePool::new()
+    }
+
+    /// 自定义回调方法名
+    #[bean("cache")]
+    #[init("startup")]
+    #[destroy("cleanup")]
+    pub fn cache_manager(&self) -> CacheManager {
+        CacheManager::new()
+    }
+}
+
+impl DatabasePool {
+    // #[init] 会自动调用此方法
+    pub fn init(&mut self) -> ContainerResult<()> {
+        tracing::info!("Initializing connection pool");
+        Ok(())
+    }
+
+    // #[destroy] 会在应用关闭时调用
+    pub fn destroy(&mut self) -> ContainerResult<()> {
+        tracing::info!("Closing connection pool");
+        Ok(())
+    }
+}
+
+impl CacheManager {
+    // #[init("startup")] 会调用此方法
+    pub fn startup(&mut self) -> ContainerResult<()> {
+        tracing::info!("Starting cache");
+        Ok(())
+    }
+
+    // #[destroy("cleanup")] 会调用此方法
+    pub fn cleanup(&mut self) -> ContainerResult<()> {
+        tracing::info!("Cleaning up cache");
+        Ok(())
+    }
+}
+```
 
 ### 模板引擎
 
@@ -267,6 +411,155 @@ hot-reload = true
 </html>
 ```
 
+### @Configuration + @Bean 工厂方法
+
+类似 Spring Boot 的 `@Configuration` + `@Bean`，用于手动定义和配置 Bean。
+
+#### 基本用法
+
+```rust
+use chimera_core::prelude::*;
+use chimera_core_macros::{bean, configuration, Configuration};
+
+// 1. 使用 #[derive(Configuration)] 标记配置类
+#[derive(Configuration)]
+pub struct AppConfig {
+    // 配置类本身也是 Component，支持依赖注入
+    #[autowired]
+    environment: Arc<Environment>,
+    #[autowired]
+    context: Arc<ApplicationContext>,
+}
+
+// 2. 在 impl 块上使用 #[configuration] 属性
+#[configuration]
+impl AppConfig {
+    /// 定义 Bean 工厂方法
+    ///
+    /// - 方法名作为 bean 名称（email_service）
+    /// - 返回值类型作为 bean 类型
+    /// - 可以返回 T 或 ContainerResult<T>
+    #[bean]
+    pub fn email_service(&self) -> EmailService {
+        let host = self.environment
+            .get_string("email.smtp.host")
+            .unwrap_or_else(|| "localhost".to_string());
+        EmailService::new(host)
+    }
+
+    /// 自定义 Bean 名称
+    #[bean("customSms")]
+    pub fn sms_service(&self) -> SmsService {
+        SmsService::new()
+    }
+
+    /// 返回 Result 类型，框架会自动处理错误
+    #[bean]
+    pub fn database_service(&self) -> ContainerResult<DatabaseService> {
+        let url = self.environment
+            .get_string("db.url")
+            .ok_or_else(|| ContainerError::Other(anyhow::anyhow!("db.url not found")))?;
+        DatabaseService::connect(&url)
+    }
+
+    /// Bean 之间的依赖注入
+    /// 通过 ApplicationContext 获取其他 Bean
+    #[bean]
+    pub fn notification_service(&self) -> ContainerResult<NotificationService> {
+        Ok(NotificationService::new(
+            self.context.get_bean_by_type::<EmailService>()?,
+            self.context.get_bean_by_type::<SmsService>()?,
+        ))
+    }
+}
+```
+
+#### 支持的属性
+
+Bean 方法支持以下属性（类似 Component）：
+
+```rust
+use chimera_core_macros::{bean, configuration, destroy, init, lazy, scope, Configuration};
+
+#[configuration]
+impl AppConfig {
+    /// 原型作用域 - 每次获取创建新实例
+    #[bean("counter")]
+    #[scope("prototype")]
+    pub fn counter(&self) -> u32 { 0 }
+
+    /// 延迟初始化 - 首次使用时才创建
+    #[bean("heavyService")]
+    #[lazy]
+    pub fn heavy_service(&self) -> HeavyService {
+        HeavyService::new()
+    }
+
+    /// 初始化和销毁回调 - 使用默认方法名
+    #[bean("dbPool")]
+    #[init]           // 调用 bean.init()
+    #[destroy]        // 调用 bean.destroy()
+    pub fn db_pool(&self) -> ConnectionPool {
+        ConnectionPool::new()
+    }
+
+    /// 自定义回调方法名
+    #[bean("cache")]
+    #[init("startup")]      // 调用 bean.startup()
+    #[destroy("cleanup")]   // 调用 bean.cleanup()
+    pub fn cache(&self) -> CacheManager {
+        CacheManager::new()
+    }
+
+    /// 组合使用多个属性
+    #[bean("expensiveService")]
+    #[scope("singleton")]
+    #[lazy]
+    #[init("initialize")]
+    #[destroy("shutdown")]
+    pub fn expensive_service(&self) -> ExpensiveService {
+        ExpensiveService::new()
+    }
+}
+
+// 生命周期方法实现
+impl ConnectionPool {
+    pub fn init(&mut self) -> ContainerResult<()> {
+        tracing::info!("Initializing connection pool");
+        Ok(())
+    }
+
+    pub fn destroy(&mut self) -> ContainerResult<()> {
+        tracing::info!("Closing connection pool");
+        Ok(())
+    }
+}
+
+impl CacheManager {
+    pub fn startup(&mut self) -> ContainerResult<()> {
+        tracing::info!("Starting cache");
+        Ok(())
+    }
+
+    pub fn cleanup(&mut self) -> ContainerResult<()> {
+        tracing::info!("Cleaning up cache");
+        Ok(())
+    }
+}
+```
+
+#### 与 @Component 的区别
+
+| 特性 | @Component | @Configuration + @Bean |
+|------|-----------|----------------------|
+| 定义方式 | 派生宏，自动扫描 | 手动工厂方法 |
+| 依赖注入 | 字段注入 `#[autowired]` | 方法参数或 ApplicationContext |
+| 适用场景 | 自己开发的类 | 第三方类型、需要复杂初始化逻辑 |
+| 初始化控制 | 自动构造 | 完全手动控制 |
+| Bean 名称 | `#[bean("name")]` 或类型名 | 方法名或 `#[bean("name")]` |
+| 作用域 | `#[derive(Component)] #[scope("...")]` | `#[bean] #[scope("...")]` |
+| 生命周期 | `#[init]` `#[destroy]` | `#[init]` `#[destroy]` |
+
 ### 事件系统
 
 - **同步/异步事件** - 支持同步和异步两种事件处理模式
@@ -289,9 +582,10 @@ hot-reload = true
 
 - **ChimeraApplication** - Spring Boot 风格的一行启动方式
 - **智能阻塞** - 有 keep-alive 插件（如 Web 服务器）时自动阻塞，否则执行完退出
-- **自动组件扫描** - 自动发现并注册所有标记 `@Component` 的组件
+- **自动组件扫描** - 自动发现并注册所有标记 `@Component` 和 `@Configuration` 的组件
 - **配置自动加载** - 自动加载配置文件和环境变量
-- **依赖自动验证** - 启动时自动验证所有依赖关系
+- **依赖自动验证** - 启动时自动验证所有依赖关系，检测循环依赖
+- **拓扑排序初始化** - 基于依赖关系自动确定 Bean 初始化顺序，被依赖的 Bean 先初始化
 - **Banner 显示** - 启动时显示框架信息
 - **插件机制** - 支持自定义插件扩展框架功能
 
@@ -349,15 +643,17 @@ your-project/
 |------|------|------|
 | `#[derive(Component)]` | 标记为自动装配组件 | 服务类、仓库类 |
 | `#[component]` | 标记 Component 的 impl 块 | 必须用于 impl 块 |
+| `#[derive(Configuration)]` | 标记为配置类（特殊的 Component） | 包含 Bean 工厂方法的配置类 |
+| `#[configuration]` | 标记 Configuration 的 impl 块 | 自动扫描 @Bean 方法 |
+| `#[bean]` 或 `#[bean("name")]` | 标记 Bean 工厂方法 | Configuration 中定义 Bean |
 | `#[derive(ConfigurationProperties)]` | 批量绑定配置 | 配置类 |
 | `#[autowired]` | 自动注入依赖 | 字段依赖注入 |
 | `#[autowired("beanName")]` | 按名称注入依赖 | 命名 Bean 注入 |
 | `#[value("config.key")]` | 注入配置值 | 单个配置注入 |
-| `#[bean("name")]` | 指定 Bean 名称 | 自定义 Bean 标识 |
 | `#[scope("singleton")]` | 指定作用域 | singleton/prototype |
 | `#[lazy]` | 延迟初始化 | 按需加载 Bean |
-| `#[init]` | 初始化回调 | Bean 创建后执行 |
-| `#[destroy]` | 销毁回调 | Bean 销毁前执行 |
+| `#[init]` 或 `#[init("method")]` | 初始化回调 | Bean 创建后执行 |
+| `#[destroy]` 或 `#[destroy("method")]` | 销毁回调 | Bean 销毁前执行 |
 | `#[event_listener]` | 事件监听器 | 监听应用事件 |
 
 **⚠️ Component 保留方法名**

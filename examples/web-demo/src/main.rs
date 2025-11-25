@@ -7,6 +7,7 @@ mod service;
 mod controller;
 mod error;
 mod processors;   // BeanPostProcessor 示例模块
+mod bean_config;  // Bean Configuration 示例模块
 
 // 导入异常处理器模块
 mod handlers {

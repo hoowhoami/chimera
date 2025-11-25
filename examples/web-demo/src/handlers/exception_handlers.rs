@@ -3,7 +3,7 @@
 //! 展示如何实现自定义的全局异常处理器
 
 use chimera_core::Component;
-use chimera_core_macros::{bean, Component};
+use chimera_core_macros::Component;
 use chimera_web::exception_handler::{ErrorResponse, GlobalExceptionHandler, WebError};
 use chimera_web_macros::ExceptionHandler;
 use serde_json::json;
@@ -13,7 +13,7 @@ use crate::error::BusinessError;
 /// 业务异常处理器 - 类似Spring的@ControllerAdvice
 /// 🔥 用户只需要添加这两个注解，框架自动完成注册！
 #[derive(ExceptionHandler, Component)]
-#[bean("businessExceptionHandler")]
+#[component("businessExceptionHandler")]
 pub struct BusinessExceptionHandler {
     #[value("app.debug", default = false)]
     debug_mode: bool,
@@ -104,7 +104,7 @@ impl GlobalExceptionHandler for BusinessExceptionHandler {
 /// 验证错误处理器 - 专门处理验证错误，提供更友好的错误信息
 /// 🔥 用户只需要添加这两个注解，框架自动完成注册！
 #[derive(ExceptionHandler, Component)]
-#[bean("validationExceptionHandler")]
+#[component("validationExceptionHandler")]
 pub struct ValidationExceptionHandler {
     #[value("app.debug", default = false)]
     debug_mode: bool,
@@ -163,7 +163,7 @@ impl GlobalExceptionHandler for ValidationExceptionHandler {
 /// 默认异常处理器 - 处理所有未被其他处理器处理的错误
 /// 🔥 用户只需要添加这两个注解，框架自动完成注册！
 #[derive(ExceptionHandler, Component)]
-#[bean("defaultExceptionHandler")]
+#[component("defaultExceptionHandler")]
 pub struct DefaultExceptionHandler {
     #[value("app.debug", default = true)]
     debug_mode: bool,

@@ -3,7 +3,7 @@ use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields, Type};
 
 use crate::attribute_helpers::{
-    get_bean_name, get_destroy_method, get_init_method, get_lazy, get_scope, to_camel_case,
+    get_component_name, get_destroy_method, get_init_method, get_lazy, get_scope, to_camel_case,
 };
 use crate::value_injection::get_value_info;
 
@@ -11,7 +11,7 @@ pub(crate) fn derive_component_impl(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let name = &input.ident;
-    let bean_name = get_bean_name(&input.attrs).unwrap_or_else(|| {
+    let bean_name = get_component_name(&input.attrs).unwrap_or_else(|| {
         // 默认使用类型名的 camelCase 形式
         // 与 chimera_core::utils::naming::to_camel_case 的逻辑保持一致
         // 例如: UserService -> userService

@@ -6,7 +6,7 @@ use crate::config::AppConfig;
 use crate::models::{SearchQuery, User};
 
 #[derive(Component, Clone)]
-#[bean("userService")]
+#[component("userService")]
 pub struct UserService {
     #[autowired]
     _config: Arc<AppConfig>,

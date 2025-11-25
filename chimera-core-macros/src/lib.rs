@@ -3,6 +3,8 @@ mod value_injection;
 mod config_properties_impl;
 mod component_impl;
 mod component_attr;
+mod configuration_impl;
+mod configuration_attr;
 mod bean_impl;
 mod bean_post_processor_impl;
 mod bean_factory_post_processor_impl;
@@ -16,36 +18,303 @@ use proc_macro_error::proc_macro_error;
 /// 用法：
 /// ```ignore
 /// #[derive(Component)]
-/// #[bean("userService")]  // 可选：指定bean名称
+/// #[component("userService")]  // 可选：指定bean名称（简写形式）
+/// // 或
+/// #[component(name = "userService")]  // 可选：指定bean名称（完整形式）
 /// #[scope("singleton")]   // 可选：指定作用域 (singleton/prototype)
 /// #[lazy]                 // 可选：延迟初始化
-/// #[init]                 // 可选：初始化回调（默认调用 post_construct 方法）
+/// #[init]                 // 可选：初始化回调（默认调用 init 方法）
 /// #[init("custom_init")]  // 可选：自定义初始化方法名
-/// #[destroy]              // 可选：销毁回调（默认调用 pre_destroy 方法）
+/// #[destroy]              // 可选：销毁回调（默认调用 destroy 方法）
 /// #[destroy("cleanup")]   // 可选：自定义销毁方法名
 /// #[event_listener]       // 可选：自动注册为EventListener
 /// ```
-#[proc_macro_derive(Component, attributes(bean, scope, lazy, autowired, value, init, destroy, event_listener))]
+#[proc_macro_derive(Component, attributes(component, scope, lazy, autowired, value, init, destroy, event_listener))]
 pub fn derive_component(input: TokenStream) -> TokenStream {
     component_impl::derive_component_impl(input)
 }
 
 /// Bean属性宏
 ///
-/// 用于在impl块中标记Bean工厂方法
+/// 用于标记 Configuration 类中的 Bean 工厂方法
 ///
-/// 用法：
+/// **注意**：此宏只是一个标记，真正的注册由 `#[configuration]` 属性宏处理
+/// 必须在 Configuration 的 impl 块上添加 `#[configuration]` 属性
+///
+/// # 用法
+///
 /// ```ignore
+/// #[derive(Configuration)]
+/// pub struct AppConfig {
+///     #[autowired]
+///     environment: Arc<Environment>,
+/// }
+///
+/// #[configuration]  // 必须添加此属性
 /// impl AppConfig {
+///     /// 使用方法名作为 bean 名称
 ///     #[bean]
-///     pub fn database_service(&self) -> Result<DatabaseService> {
-///         DatabaseService::new(&self.db_url)
+///     pub fn database_service(&self) -> DatabaseService {
+///         DatabaseService::new()
+///     }
+///
+///     /// 指定自定义 bean 名称
+///     #[bean("customDb")]
+///     pub fn db(&self) -> DatabaseService {
+///         DatabaseService::new()
+///     }
+///
+///     /// 使用 #[scope] 指定作用域
+///     #[bean("cache")]
+///     #[scope("prototype")]
+///     pub fn cache_service(&self) -> CacheService {
+///         CacheService::new()
 ///     }
 /// }
 /// ```
 #[proc_macro_attribute]
 pub fn bean(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    bean_impl::bean_impl(_attr, item)
+    // Bean 宏现在只是一个标记，实际处理由 configuration 属性宏完成
+    item
+}
+
+/// Scope 属性宏
+///
+/// 用于指定 Bean 方法的作用域（singleton 或 prototype）
+///
+/// **注意**：此宏只是一个标记，真正的处理由 `#[configuration]` 属性宏完成
+/// 必须在 Configuration 的 impl 块上添加 `#[configuration]` 属性
+///
+/// # 用法
+///
+/// ```ignore
+/// #[derive(Configuration)]
+/// pub struct AppConfig;
+///
+/// #[configuration]
+/// impl AppConfig {
+///     /// 单例 bean（默认）
+///     #[bean]
+///     pub fn singleton_service(&self) -> MyService {
+///         MyService::new()
+///     }
+///
+///     /// 原型 bean - 每次获取创建新实例
+///     #[bean]
+///     #[scope("prototype")]
+///     pub fn prototype_service(&self) -> MyService {
+///         MyService::new()
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn scope(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Scope 宏现在只是一个标记，实际处理由 configuration 属性宏完成
+    item
+}
+
+/// Lazy 属性宏
+///
+/// 用于标记 Bean 方法为延迟初始化（Lazy Initialization）
+///
+/// **注意**：此宏只是一个标记，真正的处理由 `#[configuration]` 属性宏完成
+/// 必须在 Configuration 的 impl 块上添加 `#[configuration]` 属性
+///
+/// # 用法
+///
+/// ```ignore
+/// #[derive(Configuration)]
+/// pub struct AppConfig;
+///
+/// #[configuration]
+/// impl AppConfig {
+///     /// 延迟初始化的 bean - 只有在首次使用时才会创建
+///     #[bean]
+///     #[lazy]
+///     pub fn expensive_service(&self) -> MyService {
+///         MyService::new()
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn lazy(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Lazy 宏现在只是一个标记，实际处理由 configuration 属性宏完成
+    item
+}
+
+/// Init 属性宏
+///
+/// 用于指定 Bean 的初始化回调方法
+///
+/// **注意**：此宏只是一个标记，真正的处理由 `#[configuration]` 属性宏完成
+/// 必须在 Configuration 的 impl 块上添加 `#[configuration]` 属性
+///
+/// # 用法
+///
+/// ```ignore
+/// #[derive(Configuration)]
+/// pub struct AppConfig;
+///
+/// pub struct MyService {
+///     // fields...
+/// }
+///
+/// impl MyService {
+///     pub fn init(&mut self) -> ContainerResult<()> {
+///         // 初始化逻辑
+///         Ok(())
+///     }
+///
+///     pub fn custom_init(&mut self) -> ContainerResult<()> {
+///         // 自定义初始化逻辑
+///         Ok(())
+///     }
+/// }
+///
+/// #[configuration]
+/// impl AppConfig {
+///     /// 使用默认的 init 方法
+///     #[bean]
+///     #[init]
+///     pub fn my_service(&self) -> MyService {
+///         MyService::new()
+///     }
+///
+///     /// 指定自定义初始化方法
+///     #[bean]
+///     #[init("custom_init")]
+///     pub fn another_service(&self) -> MyService {
+///         MyService::new()
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn init(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Init 宏现在只是一个标记，实际处理由 configuration 属性宏完成
+    item
+}
+
+/// Destroy 属性宏
+///
+/// 用于指定 Bean 的销毁回调方法
+///
+/// **注意**：此宏只是一个标记，真正的处理由 `#[configuration]` 属性宏完成
+/// 必须在 Configuration 的 impl 块上添加 `#[configuration]` 属性
+///
+/// # 用法
+///
+/// ```ignore
+/// #[derive(Configuration)]
+/// pub struct AppConfig;
+///
+/// pub struct MyService {
+///     // fields...
+/// }
+///
+/// impl MyService {
+///     pub fn destroy(&mut self) -> ContainerResult<()> {
+///         // 清理逻辑
+///         Ok(())
+///     }
+///
+///     pub fn cleanup(&mut self) -> ContainerResult<()> {
+///         // 自定义清理逻辑
+///         Ok(())
+///     }
+/// }
+///
+/// #[configuration]
+/// impl AppConfig {
+///     /// 使用默认的 destroy 方法
+///     #[bean]
+///     #[destroy]
+///     pub fn my_service(&self) -> MyService {
+///         MyService::new()
+///     }
+///
+///     /// 指定自定义销毁方法
+///     #[bean]
+///     #[destroy("cleanup")]
+///     pub fn another_service(&self) -> MyService {
+///         MyService::new()
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn destroy(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Destroy 宏现在只是一个标记，实际处理由 configuration 属性宏完成
+    item
+}
+
+/// Configuration impl 块属性宏
+///
+/// 用于 Configuration 类的 impl 块，自动扫描和注册所有 #[bean] 方法
+///
+/// 类似 Spring 的 @Configuration + @Bean 组合
+///
+/// # 用法
+///
+/// ```ignore
+/// #[derive(Configuration)]
+/// pub struct AppConfig {
+///     #[autowired]
+///     environment: Arc<Environment>,
+/// }
+///
+/// #[configuration]
+/// impl AppConfig {
+///     #[bean]
+///     pub fn email_service(&self) -> EmailService {
+///         EmailService::new()
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn configuration(attr: TokenStream, item: TokenStream) -> TokenStream {
+    configuration_attr::configuration_impl(attr, item)
+}
+
+/// Configuration派生宏
+///
+/// 用于标记配置类，配置类是特殊的 Component，用于包含 `#[bean]` 工厂方法
+///
+/// 类似 Spring 的 @Configuration 注解
+///
+/// # 用法
+///
+/// ```ignore
+/// use chimera_core::prelude::*;
+/// use chimera_core_macros::Configuration;
+///
+/// #[derive(Configuration)]
+/// pub struct AppConfig {
+///     #[autowired]
+///     environment: Arc<Environment>,
+/// }
+///
+/// impl AppConfig {
+///     #[bean]
+///     pub fn database_service(&self) -> ContainerResult<DatabaseService> {
+///         DatabaseService::new(&self.environment.get_string("db.url").unwrap())
+///     }
+///
+///     #[bean("cacheService")]
+///     #[scope("prototype")]
+///     pub fn cache(&self) -> ContainerResult<CacheService> {
+///         CacheService::new()
+///     }
+/// }
+/// ```
+///
+/// # 特点
+///
+/// - Configuration 本身也是一个 Component，会被自动注册到容器
+/// - 支持 `#[component("name")]` 指定配置类的 bean 名称
+/// - 支持 `#[scope]`, `#[lazy]`, `#[init]`, `#[destroy]` 等 Component 属性
+/// - 其中的 `#[bean]` 方法会在 `scan_bean_methods()` 时被扫描和注册
+#[proc_macro_derive(Configuration, attributes(component, scope, lazy, autowired, value, init, destroy))]
+pub fn derive_configuration(input: TokenStream) -> TokenStream {
+    configuration_impl::derive_configuration_impl(input)
 }
 
 /// ConfigurationProperties派生宏
